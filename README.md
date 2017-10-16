@@ -323,6 +323,9 @@ BOOTBOOT-PANIC: Hardware not supported
 ```
 
 Really old hardware. On x86_64, your CPU is older than family 6.0 or PAE, MSR, LME features not supported.
+On AArch64 it means the MMU does not support 4k granule size, at least 36 bit address size or the system timer
+(0x3F003000) is not available.
+
 
 ```
 BOOTBOOT-PANIC: Unable to initialize SDHC card
