@@ -1,5 +1,5 @@
 /*
- * loader/aarch64-rpi/bootboot.c
+ * aarch64-rpi/bootboot.c
  *
  * Copyright 2017 Public Domain BOOTBOOT bztsrc@github
  *

@@ -1,5 +1,5 @@
 /*
- * loader/aarch64-rpi/fs.h
+ * aarch64-rpi/fs.h
  * 
  * Copyright 2017 Public Domain BOOTBOOT bztsrc@github
  * 

@@ -1,5 +1,5 @@
 #
-# loader/mykernel/Makefile
+# mykernel/Makefile
 #
 # Copyright 2017 Public Domain BOOTBOOT bztsrc@github
 #

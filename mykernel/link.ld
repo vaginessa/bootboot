@@ -1,5 +1,5 @@
 /*
- * loader/mykernel/link.ld
+ * mykernel/link.ld
  *
  * Copyright 2017 Public Domain BOOTBOOT bztsrc@github
  *

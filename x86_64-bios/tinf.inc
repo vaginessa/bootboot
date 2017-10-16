@@ -1,5 +1,5 @@
 ;*
-;* loader/x86_64-bios/tinf.inc
+;* x86_64-bios/tinf.inc
 ;*
 ;* Copyright 2017 Public Domain BOOTBOOT bztsrc@github
 ;*

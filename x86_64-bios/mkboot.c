@@ -1,5 +1,5 @@
 /*
- * loader/x86_64-bios/mkboot.c
+ * x86_64-bios/mkboot.c
  *
  * Copyright 2017 Public Domain BOOTBOOT bztsrc@github
  *

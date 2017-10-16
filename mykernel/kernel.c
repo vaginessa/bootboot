@@ -1,5 +1,5 @@
 /*
- * loader/mykernel/kernel.c
+ * mykernel/kernel.c
  *
  * Copyright 2017 Public Domain BOOTBOOT bztsrc@github
  *

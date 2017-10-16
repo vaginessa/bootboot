@@ -1,5 +1,5 @@
 ;*
-;* loader/x86_64-bios/bootboot.asm
+;* x86_64-bios/bootboot.asm
 ;*
 ;* Copyright 2017 Public Domain BOOTBOOT bztsrc@github
 ;*

@@ -1,5 +1,5 @@
 ;*
-;* loader/x86_64-bios/fs.inc
+;* x86_64-bios/fs.inc
 ;*
 ;* Copyright 2017 Public Domain BOOTBOOT bztsrc@github
 ;*

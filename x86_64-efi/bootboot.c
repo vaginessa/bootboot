@@ -1,5 +1,5 @@
 /*
- * loader/x86_64-efi/bootboot.c
+ * x86_64-efi/bootboot.c
  *
  * Copyright 2017 Public Domain BOOTBOOT bztsrc@github
  *
