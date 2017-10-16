@@ -4,7 +4,7 @@
  * Copyright 2017 Public Domain BOOTBOOT bztsrc@github
  *
  * This file is part of the BOOTBOOT Protocol package.
- * @brief Little tool create a RPi compatible MBR for ESP
+ * @brief Little tool to create a RPi compatible MBR for ESP
  * 
  */
 
@@ -39,7 +39,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "mkboot: file not found\n");
         return 2;
     }
-    // read the boot record
+    // read the partitioning tables
     if(read(f, data, 65536)==-1) {
         close(f);
         fprintf(stderr, "mkboot: unable to read file\n");
@@ -58,6 +58,7 @@ int main(int argc, char** argv)
         if(*((unsigned int*)&data[i])==0xC12A7328 && *((unsigned int*)&data[i+4])==0x11D2F81F) {
             es=*((unsigned int*)&data[i+32]); ee=*((unsigned int*)&data[i+40]); break;
         }
+        i+=sp;
     }
     if(es==0 || ee==0 || ee<es+1) {
         fprintf(stderr, "mkboot: ESP not found in GPT\n");
