@@ -590,8 +590,9 @@ int sd_init()
     return SD_OK;
 }
 
+// comment out this include if you don't want FS/Z support
+#include "../../osZ/etc/include/fsZ.h"
 // get filesystem drivers for initrd
-#include "../../etc/include/fsZ.h"
 #include "fs.h"
 
 /*** other defines and structs ***/

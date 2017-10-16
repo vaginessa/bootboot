@@ -8,6 +8,9 @@ all: boot.S bootboot.c fs.h
 	@aarch64-elf-objcopy -O binary bootboot.elf ../kernel8.img
 	@rm *.o bootboot.elf
 
+mkboot: mkboot.c
+	gcc mkboot.c -o mkboot
+
 getfw:
 	wget -q https://raw.githubusercontent.com/raspberrypi/firmware/master/boot/LICENCE.broadcom
 	wget -q https://raw.githubusercontent.com/raspberrypi/firmware/master/boot/bootcode.bin

@@ -285,12 +285,14 @@ You can also create an Option ROM out of INITRD (on BIOS there's not much space 
 3.3. *BIOS disk*: copy __bootboot.bin__ to **_FS0:\BOOTBOOT\LOADER_**. You can place it inside your INITRD partition
         or outside of partition area as well (with `dd conv=notrunc oseek=x`). Finally install __boot.bin__ in the
         master boot record (or in volume boot record if you have a boot manager), saving bootboot.bin's first sector's
-        LBA number in a dword at 0x1B0. The [mkboot](https://github.com/bztsrc/bootboot/blob/master/x86_64-bios/mkboot.c)
+        LBA number in a dword at 0x1B0. The bios [mkboot](https://github.com/bztsrc/bootboot/blob/master/x86_64-bios/mkboot.c)
         utility will do that for you.
 
 3.4. *BIOS ROM*: install __bootboot.bin__ in a **_BIOS Expansion ROM_**.
 
 3.5. *Raspberry Pi 3*: copy __kernel8.img__ on the boot partition. You'll need other [firmware files](https://github.com/raspberrypi/firmware/tree/master/boot) as well.
+        If you have used a GPT disk with ESP as boot partition, then you need to map it in MBR so that Raspberry Pi firmware could find those files.
+        The easiest way to do that is with rpi [mkboot](https://github.com/bztsrc/bootboot/blob/master/aarch64-rpi/mkboot.c) utility.
 
 Limitations
 -----------
