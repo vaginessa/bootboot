@@ -862,6 +862,7 @@ void ParseEnvironment(uint8_t *env)
  */
 int bootboot_main(uint64_t hcl)
 {
+    uint8_t *pe;
     uint32_t np,sp,r,pa,mp;
     efipart_t *part;
     volatile bpb_t *bpb;
@@ -945,55 +946,79 @@ diskerr:
     if(part==NULL) goto diskerr;
     r=sd_readblock(part->start,(unsigned char*)&_end,part->end-part->start+1);
     if(r==0) goto diskerr;
+    pe=(uint8_t*)&_end+r;
     DBG(" * Initrd loaded\n");
     initrd.ptr=NULL; initrd.size=0;
     //is it a FAT partition?
     bpb=(bpb_t*)&_end;
     if(!memcmp((void*)bpb->fst,"FAT16",5) || !memcmp((void*)bpb->fst2,"FAT32",5)) {
         // locate BOOTBOOT directory
-        uint32_t data_sec, root_sec, sec=0;
+        uint32_t data_sec, root_sec, clu=0, s, s2;
         fatdir_t *dir, *dir2;
+        uint32_t *fat32=(uint32_t*)((uint8_t*)&_end+bpb->rsc*512);
+        uint16_t *fat16=(uint16_t*)fat32;
+        uint8_t *ptr;
         data_sec=root_sec=((bpb->spf16?bpb->spf16:bpb->spf32)*bpb->nf)+bpb->rsc;
         if(bpb->spf16>0) {
-            //sec=bpb->nr; WARNING gcc generates a code that cause unaligned exception
-            sec=*((uint32_t*)&bpb->nf);
-            sec>>=8;
-            sec&=0xFFFF;
-            sec<<=5;
-            sec+=511;
-            sec>>=9;
-            data_sec+=sec;
+            //WARNING gcc generates a code that cause unaligned exception
+//            data_sec+=((bpb->nr<<5)+511)>>9;
+            s=*((uint32_t*)&bpb->nf);
+            s>>=8;
+            s&=0xFFFF;
+            s<<=5;
+            s+=511;
+            s>>=9;
+            data_sec+=s;
         } else {
             root_sec+=(bpb->rc-2)*bpb->spc;
         }
         dir=(fatdir_t*)((char*)&_end+root_sec*512);
         while(dir->name[0]!=0 && memcmp(dir->name,"BOOTBOOT   ",11)) dir++;
         if(dir->name[0]!='B') goto diskerr;
-        sec=((dir->cl+(dir->ch<<16)-2)*bpb->spc)+data_sec;
-        dir=dir2=(fatdir_t*)((char*)&_end+sec*512);
+        dir=dir2=(fatdir_t*)((char*)&_end+((dir->cl+(dir->ch<<16)-2)*bpb->spc+data_sec)*512);
         // locate environment and initrd
         while(dir->name[0]!=0) {
-            sec=((dir->cl+(dir->ch<<16)-2)*bpb->spc)+data_sec;
             if(!memcmp(dir->name,"CONFIG     ",11)) {
-                memcpy((void*)&__environment,(void*)((char*)&_end+sec*512),dir->size<PAGESIZE?dir->size:PAGESIZE-1);
+                s=dir->size<PAGESIZE?dir->size:PAGESIZE-1;
+                clu=dir->cl+(dir->ch<<16);
+                ptr=(void*)&__environment;
+                while(s>0) {
+                    s2=s>bpb->spc*512?bpb->spc*512:s;
+                    memcpy((void*)ptr,(void*)((char*)&_end+((clu-2)*bpb->spc+data_sec)*512),s2);
+                    clu=bpb->spf16>0?fat16[clu]:fat32[clu];
+                    ptr+=s2;
+                    s-=s2;
+                }
+                clu=0;
             } else
             if(!memcmp(dir->name,"INITRD     ",11)) {
-                initrd.ptr=(uint8_t*)&_end+sec*512;
+                clu=dir->cl+(dir->ch<<16);
                 initrd.size=dir->size;
             }
             dir++;
         }
         // if initrd not found, try architecture specific name
-        if(initrd.size==0) {
+        if(clu==0) {
             dir=dir2;
             while(dir->name[0]!=0) {
                 if(!memcmp(dir->name,"AARCH64    ",11)) {
-                    sec=((dir->cl+(dir->ch<<16)-2)*bpb->spc)+data_sec;
-                    initrd.ptr=(uint8_t*)&_end+sec*512;
+                    clu=dir->cl+(dir->ch<<16);
                     initrd.size=dir->size;
                     break;
                 }
                 dir++;
+            }
+        }
+        // walk through cluster chain to load initrd
+        if(clu!=0 && initrd.size!=0) {
+            initrd.ptr=ptr=pe;
+            s=initrd.size;
+            while(s>0) {
+                s2=s>bpb->spc*512?bpb->spc*512:s;
+                memcpy((void*)ptr,(void*)((char*)&_end+((clu-2)*bpb->spc+data_sec)*512),s2);
+                clu=bpb->spf16>0?fat16[clu]:fat32[clu];
+                ptr+=s2;
+                s-=s2;
             }
         }
     } else {
