@@ -1,11 +1,11 @@
 all: boot.S bootboot.c fs.h
 	@echo "  src		aarch64-rpi (Raspberry Pi 3+)"
 	@aarch64-elf-gcc -g -Wall -O2 -ffreestanding -nostdinc -nostdlib -nostartfiles -c boot.S -o boot.o
-	@aarch64-elf-gcc -g -Wall -O2 -ffreestanding -nostdinc -nostdlib -nostartfiles  -I ../../etc/include/ -I ./ -c tinflate.c -o tinflate.o
-	@aarch64-elf-gcc -g -Wall -O2 -ffreestanding -nostdinc -nostdlib -nostartfiles  -I ../../etc/include/ -I ./ -c bootboot.c -o bootboot.o
+	@aarch64-elf-gcc -g -Wall -O2 -ffreestanding -nostdinc -nostdlib -nostartfiles -I ./ -c tinflate.c -o tinflate.o
+	@aarch64-elf-gcc -g -Wall -O2 -ffreestanding -nostdinc -nostdlib -nostartfiles -I ./ -c bootboot.c -o bootboot.o
 	@aarch64-elf-ld -r -b binary -o font.o font.psf
 	@aarch64-elf-ld -nostdlib -nostartfiles boot.o bootboot.o tinflate.o font.o -T link.ld -o bootboot.elf
-	@aarch64-elf-objcopy -O binary bootboot.elf ../kernel8.img
+	@aarch64-elf-objcopy -O binary bootboot.elf ../bootboot.img
 	@rm *.o bootboot.elf
 
 mkboot: mkboot.c

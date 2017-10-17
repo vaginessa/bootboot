@@ -15,16 +15,6 @@
 #define NULL ((void*)0)
 #define PAGESIZE 4096
 
-/* we don't have stdint.h */
-typedef signed char         int8_t;
-typedef short int           int16_t;
-typedef int                 int32_t;
-typedef long int            int64_t;
-typedef unsigned char       uint8_t;
-typedef unsigned short int  uint16_t;
-typedef unsigned int        uint32_t;
-typedef unsigned long int   uint64_t;
-
 #include "tinf.h"
 
 /* get BOOTBOOT structure */
@@ -38,7 +28,8 @@ volatile uint32_t  __attribute__((aligned(16))) mbox[32];
 /* we place these manually in linker script, gcc would otherwise waste lots of memory */
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __bootboot[PAGESIZE];
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __environment[PAGESIZE];
-volatile uint8_t __attribute__((aligned(PAGESIZE))) __paging[9*PAGESIZE];
+volatile uint8_t __attribute__((aligned(PAGESIZE))) __paging[20*PAGESIZE];
+volatile uint8_t __attribute__((aligned(PAGESIZE))) __corestack[PAGESIZE];
 #define __diskbuf __paging
 extern volatile uint8_t _end;
 
@@ -596,6 +587,8 @@ int sd_init()
 #include "fs.h"
 
 /*** other defines and structs ***/
+#define COREMMIO_BASE 0xFFFFFFFFFA000000
+
 typedef struct {
     uint32_t type[4];
     uint8_t  uuid[16];
@@ -903,7 +896,7 @@ int bootboot_main(uint64_t hcl)
     bootboot->loader_type = LOADER_RPI;
     bootboot->size = 128;
     bootboot->pagesize = PAGESIZE;
-    bootboot->aarch64.mmio_ptr = MMIO_BASE;
+    bootboot->aarch64.mmio_ptr = COREMMIO_BASE;
     // set up a framebuffer so that we can write on screen
     if(!GetLFB(0, 0)) goto viderr;
     puts("Booting OS...\n");
@@ -1241,17 +1234,21 @@ viderr:
     for(r=0;r<512;r++)
         paging[3*512+r]=(uint64_t)(r*PAGESIZE)|0b11|(1<<10);
     // LLBR1, core L2
-    for(r=0;r<4;r++)
-        paging[512+480+r]=(uint64_t)((uint8_t*)&__paging+(4+r)*PAGESIZE)|0b11|(1<<10); //map framebuffer
+    // map MMIO in kernel space
+    for(r=0;r<16;r++)
+        paging[512+464+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b11|(1<<10)|(1<<2);
+    // map framebuffer
+    for(r=0;r<16;r++)
+        paging[512+480+r]=(uint64_t)((uint8_t*)&__paging+(4+r)*PAGESIZE)|0b11|(1<<10);
     paging[512+511]=(uint64_t)((uint8_t*)&__paging+2*PAGESIZE)|0b11|(1<<10);// pointer to core L3
     // core L3
     paging[2*512+0]=(uint64_t)((uint8_t*)&__bootboot)|0b11|(1<<10);  // p, b, AF
     paging[2*512+1]=(uint64_t)((uint8_t*)&__environment)|0b11|(1<<10);
     for(r=0;r<(core.size/PAGESIZE)+1;r++)
         paging[2*512+2+r]=(uint64_t)((uint8_t *)core.ptr+(uint64_t)r*PAGESIZE)|0b11|(1<<10);
-    paging[2*512+511]=(uint64_t)((uint8_t*)&__paging+8*PAGESIZE)|0b11|(1<<10); // core stack
+    paging[2*512+511]=(uint64_t)((uint8_t*)&__corestack)|0b11|(1<<10); // core stack
     // core L3 (lfb)
-    for(r=0;r<512;r++)
+    for(r=0;r<16*512;r++)
         paging[4*512+r]=(uint64_t)((uint8_t*)bootboot->fb_ptr+r*PAGESIZE)|0b11|(1<<10); //map framebuffer
 
 #if MEM_DEBUG
@@ -1273,7 +1270,9 @@ viderr:
 
     uart_puts("\n\nTTBR1\n L2 ");
     uart_hex((uint64_t)&paging[512],8);
-    uart_puts("\n  ... (skipped 480) ... ");
+    uart_puts("\n  ... (skipped 464) ... ");
+    for(r=464;r<468;r++) { uart_hex(paging[512+r],8); uart_putc(' '); }
+    uart_puts("...\n  ... ");
     for(r=480;r<484;r++) { uart_hex(paging[512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
     for(r=508;r<512;r++) { uart_hex(paging[512+r],8); uart_putc(' '); }

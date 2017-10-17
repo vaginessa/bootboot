@@ -12,7 +12,7 @@ I provide pre-compiled images ready for use.
     [boot.bin](https://github.com/bztsrc/bootboot/blob/master/boot.bin?raw=true) (512 bytes, works as MBR and VBR too), [bootboot.bin](https://github.com/bztsrc/bootboot/blob/master/bootboot.bin?raw=true) (8k)
 
 3. *aarch64-rpi* ARMv8 boot loader for Raspberry Pi 3
-    [kernel8.img](https://github.com/bztsrc/bootboot/blob/master/kernel8.img?raw=true) (24k)
+    [bootboot.img](https://github.com/bztsrc/bootboot/blob/master/bootboot.img?raw=true) (24k)
 
 4. *mykernel* an example BOOTBOOT [compatible kernel](https://github.com/bztsrc/bootboot/blob/master/mykernel) in C which draws lines and boxes
 
@@ -28,16 +28,16 @@ Rationale
 The protocol describes how to boot an ELF64 or PE32+ executable inside an initial ram disk image
 into clean 64 bit mode, without using any configuration or even knowing the file system of initrd.
 
-On [BIOS](http://www.scs.stanford.edu/05au-cs240c/lab/specsbbs101.pdf) based systems, the same image can be loaded via
+On [BIOS](https://github.com/bztsrc/bootboot/tree/master/x86_64-bios) based systems, the same image can be loaded via
 [Multiboot](https://www.gnu.org/software/grub/manual/multiboot/multiboot.html),
 chainload from MBR or VBR (GPT hybrid booting) or run as a BIOS Expansion ROM
 (so not only the ramdisk can be in ROM, but the loader as well).
 
-On [UEFI machines](http://www.uefi.org/), the PCI Option ROM is created from a standard EFI
+On [UEFI machines](https://github.com/bztsrc/bootboot/tree/master/x86_64-efi), the PCI Option ROM is created from a standard EFI
 OS loader application.
 
-On [Raspberry Pi 3](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bootmodes/sdcard.md) board the kernel8.img
-is loaded from the boot partition on SD card by start.elf.
+On [Raspberry Pi 3](https://github.com/bztsrc/bootboot/tree/master/aarch64-rpi) board the bootboot.img
+is loaded from the boot partition on SD card as kernel8.img by start.elf.
 
 The difference to other booting protocols is flexibility and portability;
 only clean 64 bit support; and that BOOTBOOT expects the kernel to fit inside the
@@ -86,7 +86,7 @@ Glossary
 Boot process
 ------------
 
-1. the firmware locates the loader, loads it and passes control to it. (On BIOS it's done through boot.bin)
+1. the firmware locates the loader, loads it and passes control to it.
 2. the loader initializes hardware (64 bit mode, screen resolution, memory map etc.)
 3. then loads environment file and initrd file (probably from the boot partition or from ROM).
 4. iterates on file system drivers, and loads kernel file from initrd.
@@ -115,8 +115,8 @@ When the kernel gains control, the memory mapping looks like this (level 1 loade
     0-16G       RAM identity mapped   (0x0000000400000000)
 ```
 
-The first 16G of RAM (the positive address range) is identity mapped. Interrups are turned off (on x86_64 GDT unspecified,
-but valid, IDT unset) and code is running in supervisor mode (on x86_64 that's ring 0, on aarch64 EL1).
+The RAM (up to 16G) is identity mapped in the positive address range. Interrups are turned off and code is running
+in supervisor mode.
 
 The screen is properly set up with a 32 bit linear framebuffer, mapped at the negative address defined by the `fb` symbol
 (level 2 only). Level 1 loaders limit the framebuffer size somewhere around 4096 x 4096 pixels (depends on scanline size
@@ -168,15 +168,8 @@ BOOTBOOT\CONFIG on the boot partition. With UEFI, you can use the `edit` command
 File system drivers
 -------------------
 
-For boot partition, BIOS / Multiboot and RPi3 versions expect *defragmented* FAT12, FAT16 or FAT32 file systems (if the
-initrd is a file and does not occupy the whole boot partition). EFI version relies on any file system that's supported by
-EFI Simple File System Protocol.
-
-Luckily the EFI loader can load files from the boot partition with the
-help of the firmware. BIOS / Multiboot and RPi3 implementations are not so lucky,
-therefore they need an extra function to do that. That function however
-is out of the scope of this specification: the BOOTBOOT Protocol only
-states that a compatible loader must be able to load initrd and the environment file,
+The file system of the boot partition and how initrd is loaded from it is out of the scope of this specification:
+the BOOTBOOT Protocol only states that a compatible loader must be able to load initrd and the environment file,
 but does not describe how or from where. They can be loaded from nvram, ROM or over
 network for example, it does not matter.
 
@@ -276,33 +269,16 @@ mkfs ../INITRD .
 Alternatively you can copy an uncompressed INITRD into the whole partition using your fs only, leaving FAT file system entirely out.
 You can also create an Option ROM out of INITRD (on BIOS there's not much space ~64-96k, but on EFI it can be 16M).
 
-3. copy the BOOTBOOT loader on the boot partition:
+3. copy the BOOTBOOT loader on the boot partition.
 
-3.1. *EFI disk*: copy __bootboot.efi__ to **_FS0:\EFI\BOOT\BOOTX64.EFI_**.
+3.1. *UEFI disk*: copy __bootboot.efi__ to **_FS0:\EFI\BOOT\BOOTX64.EFI_**.
 
-3.2. *EFI ROM*: use __bootboot.rom__ which is a standard **_PCI Option ROM image_**.
+3.2. *BIOS disk*: copy __bootboot.bin__ to **_FS0:\BOOTBOOT\LOADER_**.
 
-3.3. *BIOS disk*: copy __bootboot.bin__ to **_FS0:\BOOTBOOT\LOADER_**. You can place it inside your INITRD partition
-        or outside of partition area as well (with `dd conv=notrunc oseek=x`). Finally install __boot.bin__ in the
-        master boot record (or in volume boot record if you have a boot manager), saving bootboot.bin's first sector's
-        LBA number in a dword at 0x1B0. The bios [mkboot](https://github.com/bztsrc/bootboot/blob/master/x86_64-bios/mkboot.c)
-        utility will do that for you.
+3.3. *Raspberry Pi 3*: copy __bootboot.img__ to **_FS0:\KERNEL8.IMG_**.
 
-3.4. *BIOS ROM*: install __bootboot.bin__ in a **_BIOS Expansion ROM_**.
+**IMPORTANT**: see the relevant port's README.md for more details.
 
-3.5. *Raspberry Pi 3*: copy __kernel8.img__ on the boot partition. You'll need other [firmware files](https://github.com/raspberrypi/firmware/tree/master/boot) as well.
-        If you have used a GPT disk with ESP as boot partition, then you need to map it in MBR so that Raspberry Pi firmware could find those files.
-        The easiest way to do that is with rpi [mkboot](https://github.com/bztsrc/bootboot/blob/master/aarch64-rpi/mkboot.c) utility.
-
-Limitations
------------
-
-Known limitations:
-
- - *BIOS / Multiboot* as it boots in protected mode, it only maps the first 4G of RAM. Initrd in ROM is limited to ~96k (compressed).
- - *UEFI* the PCI Expansion ROM should be signed in order to work.
- - *Raspberry Pi 3* initrd in ROM is not possible, and maps only the first 1G of RAM. Cards other than SDHC Class 10 not supported.
- 
 Troubleshooting
 ---------------
 
