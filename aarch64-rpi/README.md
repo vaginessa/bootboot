@@ -43,3 +43,5 @@ Limitations
  - Initrd in ROM is not possible
  - Maps only the first 1G of RAM.
  - Cards other than SDHC Class 10 not supported.
+ - Raspberry Pi does not have an on-board RTC, so always 0000-00-00 00:00:00 returned as bootboot.datetime.
+ 

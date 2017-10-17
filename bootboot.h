@@ -71,7 +71,7 @@ typedef struct {
   uint32_t   pagesize;    // 4096
   uint32_t   bspid;       // Bootsrap processor ID (Local APIC Id on x86_64)
 
-  uint8_t    datetime[8]; // in BCD yyyymmddhhiiss
+  uint8_t    datetime[8]; // in BCD yyyymmddhhiiss UTC (independent to timezone)
 
   uint64_t   initrd_ptr;  // ramdisk image position and size
   uint64_t   initrd_size;
