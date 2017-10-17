@@ -900,7 +900,7 @@ int bootboot_main(uint64_t hcl)
     if(!GetLFB(0, 0)) goto viderr;
     puts("Booting OS...\n");
 
-    /* check for system timer presence and 4k granule and at least 36 bits address */
+    /* check for 4k granule and at least 36 bits address */
     asm volatile ("mrs %0, id_aa64mmfr0_el1" : "=r" (reg));
     pa=reg&0xF;
     if(reg&(0xF<<28) || pa<1) {
