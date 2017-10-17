@@ -417,7 +417,7 @@ int sd_cmd(uint32_t code, uint32_t arg)
  */
 int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
 {
-    int r,c=0,d,p,l=0;
+    int r,c=0,d;
     if(num<1) num=1;
 #if SD_DEBUG
     uart_puts("sd_readblock lba ");uart_hex(lba,4);uart_puts(" num ");uart_hex(num,4);uart_putc('\n');
@@ -435,8 +435,6 @@ int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
     } else {
         *EMMC_BLKSIZECNT = (1 << 16) | 512;
     }
-    if(num>1)
-        puts("           ]\r [");
     while( c < num ) {
         if(!(sd_scr[0] & SCR_SUPP_CCS)) {
             sd_cmd(CMD_READ_SINGLE,(lba+c)*512);
@@ -445,10 +443,7 @@ int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
         if((r=sd_int(INT_READ_RDY))){DBG("\rBOOTBOOT-ERROR: Timeout waiting for ready to read\n");sd_err=r;return 0;}
         for(d=0;d<128;d++) buf[d] = *EMMC_DATA;
         c++; buf+=128;
-        p=(c<<3)/num; if(num>1 && p!=l) { l=p; putc('='); }
     }
-    if(num>1)
-        puts("\r            \r");
 #if SD_DEBUG
     uart_dump(buffer,4);
 #endif
@@ -971,17 +966,15 @@ diskerr:
             break;
     }
     if(part==NULL) goto diskerr;
-    r=sd_readblock(part->start,(unsigned char*)&_end,part->end-part->start+1);
+    r=sd_readblock(part->start,(unsigned char*)&_end,1);
     if(r==0) goto diskerr;
-    pe=(uint8_t*)&_end+r;
-    DBG(" * Initrd loaded\n");
     initrd.ptr=NULL; initrd.size=0;
     //is it a FAT partition?
     bpb=(bpb_t*)&_end;
     if(!memcmp((void*)bpb->fst,"FAT16",5) || !memcmp((void*)bpb->fst2,"FAT32",5)) {
         // locate BOOTBOOT directory
         uint32_t data_sec, root_sec, clu=0, s, s2;
-        fatdir_t *dir, *dir2;
+        fatdir_t *dir;
         uint32_t *fat32=(uint32_t*)((uint8_t*)&_end+bpb->rsc*512);
         uint16_t *fat16=(uint16_t*)fat32;
         uint8_t *ptr;
@@ -999,10 +992,18 @@ diskerr:
         } else {
             root_sec+=(bpb->rc-2)*bpb->spc;
         }
-        dir=(fatdir_t*)((char*)&_end+root_sec*512);
+        // load fat table
+        r=sd_readblock(part->start+1,(unsigned char*)&_end+512,(bpb->spf16?bpb->spf16:bpb->spf32)+bpb->rsc);
+        if(r==0) goto diskerr;
+        pe=(uint8_t*)&_end+512+r;
+        // load root directory
+        r=sd_readblock(part->start+root_sec,(unsigned char*)pe,bpb->spc);
+        dir=(fatdir_t*)pe;
         while(dir->name[0]!=0 && memcmp(dir->name,"BOOTBOOT   ",11)) dir++;
         if(dir->name[0]!='B') goto diskerr;
-        dir=dir2=(fatdir_t*)((char*)&_end+((dir->cl+(dir->ch<<16)-2)*bpb->spc+data_sec)*512);
+        r=sd_readblock(part->start+(dir->cl+(dir->ch<<16)-2)*bpb->spc+data_sec,(unsigned char*)pe,bpb->spc);
+        if(r==0) goto diskerr;
+        dir=(fatdir_t*)pe;
         // locate environment and initrd
         while(dir->name[0]!=0) {
             if(!memcmp(dir->name,"CONFIG     ",11)) {
@@ -1011,7 +1012,7 @@ diskerr:
                 ptr=(void*)&__environment;
                 while(s>0) {
                     s2=s>bpb->spc*512?bpb->spc*512:s;
-                    memcpy((void*)ptr,(void*)((char*)&_end+((clu-2)*bpb->spc+data_sec)*512),s2);
+                    r=sd_readblock(part->start+(clu-2)*bpb->spc+data_sec,ptr,s2/512);
                     clu=bpb->spf16>0?fat16[clu]:fat32[clu];
                     ptr+=s2;
                     s-=s2;
@@ -1026,7 +1027,7 @@ diskerr:
         }
         // if initrd not found, try architecture specific name
         if(clu==0) {
-            dir=dir2;
+            dir=(fatdir_t*)pe;
             while(dir->name[0]!=0) {
                 if(!memcmp(dir->name,"AARCH64    ",11)) {
                     clu=dir->cl+(dir->ch<<16);
@@ -1042,7 +1043,7 @@ diskerr:
             s=initrd.size;
             while(s>0) {
                 s2=s>bpb->spc*512?bpb->spc*512:s;
-                memcpy((void*)ptr,(void*)((char*)&_end+((clu-2)*bpb->spc+data_sec)*512),s2);
+                r=sd_readblock(part->start+(clu-2)*bpb->spc+data_sec,ptr,s2/512);
                 clu=bpb->spf16>0?fat16[clu]:fat32[clu];
                 ptr+=s2;
                 s-=s2;
@@ -1050,6 +1051,8 @@ diskerr:
         }
     } else {
         // initrd is on the entire partition
+        r=sd_readblock(part->start,(unsigned char*)&_end+512,part->end-part->start);
+        if(r==0) goto diskerr;
         initrd.ptr=(uint8_t*)&_end;
         initrd.size=r;
     }
@@ -1108,6 +1111,7 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
     // dump initrd in memory
     uart_dump((void*)bootboot->initrd_ptr,8);
 #endif
+    DBG(" * Initrd loaded\n");
 
     // if no config, locate it in uncompressed initrd
     if(1||*((uint8_t*)&__environment)==0) {
