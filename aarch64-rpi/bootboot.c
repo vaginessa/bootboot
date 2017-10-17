@@ -425,6 +425,7 @@ int sd_cmd(uint32_t code, uint32_t arg)
  */
 int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
 {
+    if(num<1) num=1;
 #if SD_DEBUG
     uart_puts("sd_readblock lba ");uart_hex(lba,4);uart_puts(" num ");uart_hex(num,4);uart_putc('\n');
 #endif
