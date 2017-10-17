@@ -111,9 +111,6 @@ typedef struct {
 #define CLOCKHZ         1000000
 
 #define MMIO_BASE       0x3F000000
-#define STMR_L          ((volatile uint32_t*)(MMIO_BASE+0x00003004))
-#define STMR_H          ((volatile uint32_t*)(MMIO_BASE+0x00003008))
-#define STMR_C3         ((volatile uint32_t*)(MMIO_BASE+0x00003018))
 
 #define ARM_TIMER_CTL   ((volatile uint32_t*)(MMIO_BASE+0x0000B408))
 #define ARM_TIMER_CNT   ((volatile uint32_t*)(MMIO_BASE+0x0000B420))
@@ -159,11 +156,12 @@ typedef struct {
 #define UART0_CR        ((volatile uint32_t*)(MMIO_BASE+0x00201030))
 
 /* timing stuff */
-uint64_t getmicro(void){uint32_t h=*STMR_H,l=*STMR_L;if(h!=*STMR_H){h=*STMR_H;l=*STMR_L;} return(((uint64_t)h)<<32)|l;}
+uint64_t cntfrq;
 /* delay cnt clockcycles */
 void delay(uint32_t cnt) { while(cnt--) { asm volatile("nop"); } }
 /* delay cnt microsec */
-void delaym(uint32_t cnt) {uint64_t t=getmicro();cnt+=t;while(getmicro()<cnt); }
+void delaym(uint32_t cnt) {uint64_t t,r;asm volatile ("mrs %0, cntpct_el0" : "=r" (t));
+    t+=((cntfrq/1000)*cnt)/1000;do{asm volatile ("mrs %0, cntpct_el0" : "=r" (r));}while(r<t);}
 
 /* UART stuff */
 void uart_send(uint32_t c) { do{asm volatile("nop");}while(!(*AUX_MU_LSR&0x20)); *AUX_MU_IO=c; *UART0_DR=c; }
@@ -905,14 +903,16 @@ int bootboot_main(uint64_t hcl)
     /* check for system timer presence and 4k granule and at least 36 bits address */
     asm volatile ("mrs %0, id_aa64mmfr0_el1" : "=r" (reg));
     pa=reg&0xF;
-    if(getmicro()==0 || reg&(0xF<<28) || pa<1) {
+    if(reg&(0xF<<28) || pa<1) {
         puts("BOOTBOOT-PANIC: Hardware not supported\n");
         uart_puts("ID_AA64MMFR0_EL1 ");
         uart_hex(reg,8);
-        uart_puts(" SYSTIMER ");
-        uart_puts(getmicro()==0?"none\n":"ok\n");
+        uart_putc('\n');
         goto error;
     }
+
+    /* initialize microsec delay */
+    asm volatile ("mrs %0, cntfrq_el0" : "=r" (cntfrq));
 
     /* initialize SDHC card reader in EMMC */
     if(sd_init()) {
