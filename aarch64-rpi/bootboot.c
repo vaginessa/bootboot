@@ -425,13 +425,12 @@ int sd_cmd(uint32_t code, uint32_t arg)
  */
 int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
 {
+    int r,c=0,d,p,l=0;
     if(num<1) num=1;
 #if SD_DEBUG
     uart_puts("sd_readblock lba ");uart_hex(lba,4);uart_puts(" num ");uart_hex(num,4);uart_putc('\n');
 #endif
     if(sd_status(SR_DAT_INHIBIT)) {sd_err=SD_TIMEOUT; return 0;}
-    int transferCmd = ( num == 1 ? CMD_READ_SINGLE : CMD_READ_MULTI);
-    int r,c=0,d,p,l=0;
     uint32_t *buf=(uint32_t *)buffer;
     if(sd_scr[0] & SCR_SUPP_CCS) {
         if(num > 1 && (sd_scr[0] & SCR_SUPP_SET_BLKCNT)) {
@@ -439,7 +438,7 @@ int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
             if(sd_err) return 0;
         }
         *EMMC_BLKSIZECNT = (num << 16) | 512;
-        sd_cmd(transferCmd,lba);
+        sd_cmd(num == 1 ? CMD_READ_SINGLE : CMD_READ_MULTI,lba);
         if(sd_err) return 0;
     } else {
         *EMMC_BLKSIZECNT = (1 << 16) | 512;
@@ -451,7 +450,7 @@ int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
             sd_cmd(CMD_READ_SINGLE,(lba+c)*512);
             if(sd_err) return 0;
         }
-        if((r=sd_int(INT_READ_RDY))){DBG("BOOTBOOT-ERROR: Timeout waiting for ready to read\n");sd_err=r;return 0;}
+        if((r=sd_int(INT_READ_RDY))){DBG("\rBOOTBOOT-ERROR: Timeout waiting for ready to read\n");sd_err=r;return 0;}
         for(d=0;d<128;d++) buf[d] = *EMMC_DATA;
         c++; buf+=128;
         p=(c<<3)/num; if(num>1 && p!=l) { l=p; putc('='); }
