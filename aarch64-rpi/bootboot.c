@@ -20,9 +20,6 @@
 /* get BOOTBOOT structure */
 #include "../bootboot.h"
 
-/* import function from boot.S */
-extern void jumptokernel(uint64_t pc);
-
 /* aligned buffers */
 volatile uint32_t  __attribute__((aligned(16))) mbox[32];
 /* we place these manually in linker script, gcc would otherwise waste lots of memory */
@@ -439,7 +436,7 @@ int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
         *EMMC_BLKSIZECNT = (1 << 16) | 512;
     }
     if(num>1)
-        puts("[       ]\r[");
+        puts("           ]\r [");
     while( c < num ) {
         if(!(sd_scr[0] & SCR_SUPP_CCS)) {
             sd_cmd(CMD_READ_SINGLE,(lba+c)*512);
@@ -451,7 +448,7 @@ int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
         p=(c<<3)/num; if(num>1 && p!=l) { l=p; putc('='); }
     }
     if(num>1)
-        puts("\r         \r");
+        puts("\r            \r");
 #if SD_DEBUG
     uart_dump(buffer,4);
 #endif
@@ -1083,15 +1080,18 @@ diskerr:
         d.bfinal = 0;
         d.btype = -1;
         d.curlen = 0;
-        d.dest = (unsigned char*)((uint64_t)(initrd.ptr+initrd.size+PAGESIZE-1)&~(PAGESIZE-1));
+        if((uint8_t*)&_end+d.destSize<addr)
+            d.dest=(uint8_t*)&_end;
+        else
+            d.dest=(uint8_t*)((uint64_t)(initrd.ptr+initrd.size+PAGESIZE-1)&~(PAGESIZE-1));
         initrd.ptr=(uint8_t*)d.dest;
         initrd.size=d.destSize;
 #if INITRD_DEBUG
         uart_puts("Inflating to ");uart_hex((uint64_t)d.dest,4);uart_putc(' ');uart_hex(d.destSize,4);uart_putc('\n');
 #endif
-        puts("Inflating image...\r");
+        puts(" * Inflating image...\r");
         do { r = uzlib_uncompress(&d); } while (!r);
-        puts("                  \r");
+        puts("                     \r");
         if (r != TINF_DONE) {
 gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
             goto error;
@@ -1106,7 +1106,7 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
     bootboot->initrd_size=(initrd.size+PAGESIZE-1)&~(PAGESIZE-1);
 #if INITRD_DEBUG
     // dump initrd in memory
-    uart_dump((void*)bootboot->initrd_ptr,1);
+    uart_dump((void*)bootboot->initrd_ptr,8);
 #endif
 
     // if no config, locate it in uncompressed initrd
@@ -1378,8 +1378,9 @@ viderr:
     uart_puts(" * Entry point ");
     uart_hex(entrypoint,8);
     uart_putc('\n');
+    uart_dump(core.ptr,8);
 #endif
-    jumptokernel(entrypoint);
+    asm volatile ("mov sp,#-16; mov x30, %0; ret" : : "r" (entrypoint));
 
     // Wait until Enter or Space pressed, then reboot
 error:

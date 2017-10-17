@@ -81,14 +81,6 @@ _start:
 1:  wfe
     b       1b
 
-jumptokernel:
-    // move stack to the top of memory. We waste 16 bytes here
-    // to create an address in the negative range
-    mov     sp, #-16
-    // set PC to kernel entry point
-    mov     x30, x0
-    ret
-
     .align  11
 _vectors:
     .align  7
