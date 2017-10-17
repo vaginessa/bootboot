@@ -3,11 +3,8 @@ BOOTBOOT UEFI Implementation
 
 See [BOOTBOOT Protocol](https://github.com/bztsrc/bootboot) for common details.
 
-On [UEFI machines](http://www.uefi.org/), the PCI Option ROM is created from a standard EFI
+On [UEFI machines](http://www.uefi.org/), the PCI Option ROM is created from the standard EFI
 OS loader application.
-
-On [Raspberry Pi 3](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bootmodes/sdcard.md) board the kernel8.img
-is loaded from the boot partition on SD card by start.elf.
 
 Machine state
 -------------
@@ -17,7 +14,7 @@ IRQs masked. GDT unspecified, but valid, IDT unset. Code is running in superviso
 File system drivers
 -------------------
 
-For boot partition, EFI version relies on any file system that's supported by EFI Simple File System Protocol.
+For boot partition, UEFI version relies on any file system that's supported by EFI Simple File System Protocol.
 
 Installation
 ------------

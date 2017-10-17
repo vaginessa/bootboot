@@ -16,7 +16,7 @@ IRQs masked. GDT unspecified, but valid, IDT unset. Code is running in superviso
 File system drivers
 -------------------
 
-For boot partition, BIOS / Multiboot version expect *defragmented* FAT12, FAT16 or FAT32 file systems (if the
+For boot partition, BIOS / Multiboot version expects *defragmented* FAT12, FAT16 or FAT32 file systems (if the
 initrd is a file and does not occupy the whole boot partition).
 
 Installation

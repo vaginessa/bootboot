@@ -21,7 +21,7 @@ handlers as soon as possible.
 File system drivers
 -------------------
 
-For boot partition, RPi3 version expect *defragmented* FAT16 or FAT32 file systems (if the
+For boot partition, RPi3 version expects *defragmented* FAT16 or FAT32 file systems (if the
 initrd is a file and does not occupy the whole boot partition).
 
 Gzip compression is not recommended as reading from SD card is considerably faster than uncompressing.

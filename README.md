@@ -29,12 +29,10 @@ The protocol describes how to boot an ELF64 or PE32+ executable inside an initia
 into clean 64 bit mode, without using any configuration or even knowing the file system of initrd.
 
 On [BIOS](https://github.com/bztsrc/bootboot/tree/master/x86_64-bios) based systems, the same image can be loaded via
-[Multiboot](https://www.gnu.org/software/grub/manual/multiboot/multiboot.html),
-chainload from MBR or VBR (GPT hybrid booting) or run as a BIOS Expansion ROM
+Multiboot, chainload from MBR or VBR (GPT hybrid booting) or run as a BIOS Expansion ROM
 (so not only the ramdisk can be in ROM, but the loader as well).
 
-On [UEFI machines](https://github.com/bztsrc/bootboot/tree/master/x86_64-efi), the PCI Option ROM is created from a standard EFI
-OS loader application.
+On [UEFI machines](https://github.com/bztsrc/bootboot/tree/master/x86_64-efi), it is a standard EFI OS Loader application.
 
 On [Raspberry Pi 3](https://github.com/bztsrc/bootboot/tree/master/aarch64-rpi) board the bootboot.img
 is loaded from the boot partition on SD card as kernel8.img by start.elf.
