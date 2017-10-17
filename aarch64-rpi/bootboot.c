@@ -343,10 +343,12 @@ int hex2bin(unsigned char *s, int n){ int r=0;while(n-->0){r<<=4;
 #define HOST_SPEC_V2        1
 #define HOST_SPEC_V1        0
 
-// SCR flads
+// SCR flags
 #define SCR_SD_BUS_WIDTH_4  0x00000400
 #define SCR_SUPP_SET_BLKCNT 0x02000000
- 
+// added by my driver
+#define SCR_SUPP_CCS        0x00000001
+
 #define ACMD41_VOLTAGE      0x00ff8000
 #define ACMD41_CMD_COMPLETE 0x80000000
 #define ACMD41_CMD_CCS      0x40000000
@@ -427,24 +429,44 @@ int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
 #endif
     if(sd_status(SR_DAT_INHIBIT)) {sd_err=SD_TIMEOUT; return 0;}
     int transferCmd = ( num == 1 ? CMD_READ_SINGLE : CMD_READ_MULTI);
-    int r;
-    if( num > 1 && (sd_scr[0] & SCR_SUPP_SET_BLKCNT)) {
-    sd_cmd(CMD_SET_BLOCKCNT,num);
-    if(sd_err) return 0;
-    }
-    *EMMC_BLKSIZECNT = (num << 16) | 512;
-    sd_cmd(transferCmd,lba);
-    if(sd_err) return 0;
-    
-    int c = 0, d;
+    int r,c=0,d;
     uint32_t *buf=(uint32_t *)buffer;
+    if(sd_scr[0] & SCR_SUPP_CCS) {
+        if(num > 1 && (sd_scr[0] & SCR_SUPP_SET_BLKCNT)) {
+            sd_cmd(CMD_SET_BLOCKCNT,num);
+#if SD_DEBUG
+            if(sd_err)
+                uart_puts("EMMC: CMD_SET_BLOCKCNT failed\n");
+#endif
+            if(sd_err) return 0;
+        }
+        *EMMC_BLKSIZECNT = (num << 16) | 512;
+        sd_cmd(transferCmd,lba);
+#if SD_DEBUG
+        if(sd_err)
+            uart_puts("EMMC: CMD_READ failed\n");
+#endif
+        if(sd_err) return 0;
+    } else {
+        *EMMC_BLKSIZECNT = (1 << 16) | 512;
+    }
     while( c < num ) {
+        if(!(sd_scr[0] & SCR_SUPP_CCS)) {
+            sd_cmd(CMD_READ_SINGLE,(lba+c)*512);
+#if SD_DEBUG
+            if(sd_err)
+                uart_puts("EMMC: CMD_READ failed\n");
+#endif
+            if(sd_err) return 0;
+        }
         if((r=sd_int(INT_READ_RDY))){DBG("BOOTBOOT-ERROR: Timeout waiting for ready to read\n");sd_err=r;return 0;}
         for(d=0;d<128;d++) buf[d] = *EMMC_DATA;
         c++; buf+=128;
     }
-    
-    if( num > 1 && !(sd_scr[0] & SCR_SUPP_SET_BLKCNT)) sd_cmd(CMD_STOP_TRANS,0);
+#if SD_DEBUG
+    uart_dump(buffer,4);
+#endif
+    if( num > 1 && !(sd_scr[0] & SCR_SUPP_SET_BLKCNT) && (sd_scr[0] & SCR_SUPP_CCS)) sd_cmd(CMD_STOP_TRANS,0);
     return sd_err!=SD_OK || c!=num? 0 : num*512;
 }
 
@@ -493,7 +515,7 @@ int sd_clk(uint32_t f)
  */
 int sd_init()
 {
-    int r,cnt;
+    long r,cnt,ccs=0;
     // GPIO_CD
     r=*GPFSEL4; r&=~(7<<(7*3)); *GPFSEL4=r;
     *GPPUD=2; delay(150); *GPPUDCLK1=(1<<15); delay(150); *GPPUD=0; *GPPUDCLK1=0;
@@ -534,23 +556,38 @@ int sd_init()
     if(sd_err) return sd_err;
 
     sd_cmd(CMD_SEND_IF_COND,0x000001AA);
-    if(!sd_err) {
-        cnt=6; r=0; while(!(r&ACMD41_CMD_COMPLETE) && cnt--) {
-            delay(400);
-            r=sd_cmd(CMD_SEND_OP_COND,ACMD41_ARG_HC);
-            if(sd_err!=SD_TIMEOUT && sd_err!=SD_OK ) {
-                DBG("BOOTBOOT-ERROR: EMMC ACMD41 returned error\n");
-                return sd_err;
-            }
+    if(sd_err) return sd_err;
+    cnt=6; r=0; while(!(r&ACMD41_CMD_COMPLETE) && cnt--) {
+        delay(400);
+        r=sd_cmd(CMD_SEND_OP_COND,ACMD41_ARG_HC);
+#if SD_DEBUG
+    uart_puts("EMMC: CMD_SEND_OP_COND returned ");
+    if(r&ACMD41_CMD_COMPLETE)
+        uart_puts("COMPLETE ");
+    if(r&ACMD41_VOLTAGE)
+        uart_puts("VOLTAGE ");
+    if(r&ACMD41_CMD_CCS)
+        uart_puts("CCS ");
+    uart_hex(r,8);
+    uart_putc('\n');
+#endif
+        if(sd_err!=SD_TIMEOUT && sd_err!=SD_OK ) {
+            DBG("BOOTBOOT-ERROR: EMMC ACMD41 returned error\n");
+            return sd_err;
         }
-        if(!(r&ACMD41_CMD_COMPLETE) || !cnt ) return SD_TIMEOUT;
-        if(!(r&ACMD41_VOLTAGE) || !(r&ACMD41_CMD_CCS)) return SD_ERROR;
-    } else
-        return sd_err;
+    }
+    if(!(r&ACMD41_CMD_COMPLETE) || !cnt ) return SD_TIMEOUT;
+    if(!(r&ACMD41_VOLTAGE)) return SD_ERROR;
+    if(r&ACMD41_CMD_CCS) ccs=SCR_SUPP_CCS;
 
     sd_cmd(CMD_ALL_SEND_CID,0);
 
     sd_rca = sd_cmd(CMD_SEND_REL_ADDR,0);
+#if SD_DEBUG
+    uart_puts("EMMC: CMD_SEND_REL_ADDR returned ");
+    uart_hex(sd_rca,8);
+    uart_putc('\n');
+#endif
     if(sd_err) return sd_err;
 
     if((r=sd_clk(25000000))) return r;
@@ -576,6 +613,17 @@ int sd_init()
         if(sd_err) return sd_err;
         *EMMC_CONTROL0 |= C0_HCTL_DWITDH;
     }
+    // add software flag
+#ifdef SD_DEBUG
+    uart_puts("EMMC: supports ");
+    if(sd_scr[0] & SCR_SUPP_SET_BLKCNT)
+        uart_puts("SET_BLKCNT ");
+    if(ccs)
+        uart_puts("CCS ");
+    uart_putc('\n');
+#endif
+    sd_scr[0]&=~SCR_SUPP_CCS;
+    sd_scr[0]|=ccs;
     return SD_OK;
 }
 
