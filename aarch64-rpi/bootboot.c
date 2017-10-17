@@ -109,12 +109,7 @@ typedef struct {
 } pe_hdr;
 
 /*** Raspberry Pi specific defines ***/
-#define CLOCKHZ         1000000
-
 #define MMIO_BASE       0x3F000000
-
-#define ARM_TIMER_CTL   ((volatile uint32_t*)(MMIO_BASE+0x0000B408))
-#define ARM_TIMER_CNT   ((volatile uint32_t*)(MMIO_BASE+0x0000B420))
 
 #define PM_RTSC         ((volatile uint32_t*)(MMIO_BASE+0x0010001c))
 #define PM_WATCHDOG     ((volatile uint32_t*)(MMIO_BASE+0x00100024))
