@@ -34,6 +34,7 @@ volatile uint8_t __attribute__((aligned(PAGESIZE))) __corestack[PAGESIZE];
 extern volatile uint8_t _end;
 
 /* forward definitions */
+void putc(char c);
 void puts(char *s);
 
 /*** ELF64 defines and structs ***/
@@ -429,40 +430,33 @@ int sd_readblock(uint64_t lba, uint8_t *buffer, uint32_t num)
 #endif
     if(sd_status(SR_DAT_INHIBIT)) {sd_err=SD_TIMEOUT; return 0;}
     int transferCmd = ( num == 1 ? CMD_READ_SINGLE : CMD_READ_MULTI);
-    int r,c=0,d;
+    int r,c=0,d,p,l=0;
     uint32_t *buf=(uint32_t *)buffer;
     if(sd_scr[0] & SCR_SUPP_CCS) {
         if(num > 1 && (sd_scr[0] & SCR_SUPP_SET_BLKCNT)) {
             sd_cmd(CMD_SET_BLOCKCNT,num);
-#if SD_DEBUG
-            if(sd_err)
-                uart_puts("EMMC: CMD_SET_BLOCKCNT failed\n");
-#endif
             if(sd_err) return 0;
         }
         *EMMC_BLKSIZECNT = (num << 16) | 512;
         sd_cmd(transferCmd,lba);
-#if SD_DEBUG
-        if(sd_err)
-            uart_puts("EMMC: CMD_READ failed\n");
-#endif
         if(sd_err) return 0;
     } else {
         *EMMC_BLKSIZECNT = (1 << 16) | 512;
     }
+    if(num>1)
+        puts("[       ]\r[");
     while( c < num ) {
         if(!(sd_scr[0] & SCR_SUPP_CCS)) {
             sd_cmd(CMD_READ_SINGLE,(lba+c)*512);
-#if SD_DEBUG
-            if(sd_err)
-                uart_puts("EMMC: CMD_READ failed\n");
-#endif
             if(sd_err) return 0;
         }
         if((r=sd_int(INT_READ_RDY))){DBG("BOOTBOOT-ERROR: Timeout waiting for ready to read\n");sd_err=r;return 0;}
         for(d=0;d<128;d++) buf[d] = *EMMC_DATA;
         c++; buf+=128;
+        p=(c<<3)/num; if(num>1 && p!=l) { l=p; putc('='); }
     }
+    if(num>1)
+        puts("\r         \r");
 #if SD_DEBUG
     uart_dump(buffer,4);
 #endif
@@ -693,10 +687,6 @@ typedef struct {
 } __attribute__((packed)) font_t;
 
 extern volatile unsigned char _binary_font_psf_start;
-/* current cursor position */
-int kx, ky;
-/* maximum coordinates */
-int maxx, maxy;
 
 /*** common variables ***/
 file_t env;         // environment file descriptor
@@ -711,6 +701,11 @@ unsigned char *kne;
 
 // alternative environment name
 char *cfgname="sys/config";
+
+/* current cursor position */
+int kx, ky;
+/* maximum coordinates */
+int maxx, maxy;
 
 /**
  * Get a linear frame buffer
@@ -816,17 +811,28 @@ void putc(char c)
     int offs = (ky * font->height * bootboot->fb_scanline) + (kx * (font->width+1) * 4);
     int x,y, line,mask;
     int bytesperline=(font->width+7)/8;
-    for(y=0;y<font->height;y++){
-        line=offs;
-        mask=1<<(font->width-1);
-        for(x=0;x<font->width;x++){
-            *((uint32_t*)((uint64_t)bootboot->fb_ptr + line))=((int)*glyph) & (mask)?0xFFFFFF:0;
-            mask>>=1;
-            line+=4;
+    if(c=='\r') {
+        kx=0;
+    } else
+    if(c=='\n') {
+        kx=0; ky++;
+    } else {
+        for(y=0;y<font->height;y++){
+            line=offs;
+            mask=1<<(font->width-1);
+            for(x=0;x<font->width;x++){
+                *((uint32_t*)((uint64_t)bootboot->fb_ptr + line))=((int)*glyph) & (mask)?0xFFFFFF:0;
+                mask>>=1;
+                line+=4;
+            }
+            *((uint32_t*)((uint64_t)bootboot->fb_ptr + line))=0;
+            glyph+=bytesperline;
+            offs+=bootboot->fb_scanline;
         }
-        *((uint32_t*)((uint64_t)bootboot->fb_ptr + line))=0;
-        glyph+=bytesperline;
-        offs+=bootboot->fb_scanline;
+        kx++;
+        if(kx>=maxx) {
+            kx=0; ky++;
+        }
     }
     // send it to serial too
     uart_putc(c);
@@ -835,26 +841,7 @@ void putc(char c)
 /**
  * display a string
  */
-void puts(char *s)
-{
-    while(*s) {
-        if(*s=='\r') {
-            uart_putc(*s);
-            kx=0;
-        } else
-        if(*s=='\n') {
-            uart_putc(*s);
-            kx=0;ky++;
-        } else {
-            putc(*s);
-            kx++;
-            if(kx>=maxx) {
-                kx=0; ky++;
-            }
-        }
-        s++;
-    }
-}
+void puts(char *s) { while(*s) putc(*s++); }
 
 void ParseEnvironment(uint8_t *env)
 {
@@ -1150,7 +1137,7 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
         *kne='\n';
     // scan for the first executable
     if(core.ptr==NULL || core.size==0) {
-        puts(" * Autodetecting kernel\n");
+        DBG(" * Autodetecting kernel\n");
         core.size=0;
         r=bootboot->initrd_size;
         core.ptr=(uint8_t*)bootboot->initrd_ptr;
