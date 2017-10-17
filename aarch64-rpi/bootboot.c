@@ -979,16 +979,13 @@ diskerr:
         uint16_t *fat16=(uint16_t*)fat32;
         uint8_t *ptr;
         data_sec=root_sec=((bpb->spf16?bpb->spf16:bpb->spf32)*bpb->nf)+bpb->rsc;
+        //WARNING gcc generates a code for bpb->nr that cause unaligned exception
+        s=*((uint32_t*)&bpb->nf);
+        s>>=8;
+        s&=0xFFFF;
+        s<<=5;
         if(bpb->spf16>0) {
-            //WARNING gcc generates a code that cause unaligned exception
-//            data_sec+=((bpb->nr<<5)+511)>>9;
-            s=*((uint32_t*)&bpb->nf);
-            s>>=8;
-            s&=0xFFFF;
-            s<<=5;
-            s+=511;
-            s>>=9;
-            data_sec+=s;
+            data_sec+=(s+511)>>9;
         } else {
             root_sec+=(bpb->rc-2)*bpb->spc;
         }
@@ -997,7 +994,7 @@ diskerr:
         if(r==0) goto diskerr;
         pe=(uint8_t*)&_end+512+r;
         // load root directory
-        r=sd_readblock(part->start+root_sec,(unsigned char*)pe,bpb->spc);
+        r=sd_readblock(part->start+root_sec,(unsigned char*)pe,s/512+1);
         dir=(fatdir_t*)pe;
         while(dir->name[0]!=0 && memcmp(dir->name,"BOOTBOOT   ",11)) dir++;
         if(dir->name[0]!='B') goto diskerr;
@@ -1012,7 +1009,7 @@ diskerr:
                 ptr=(void*)&__environment;
                 while(s>0) {
                     s2=s>bpb->spc*512?bpb->spc*512:s;
-                    r=sd_readblock(part->start+(clu-2)*bpb->spc+data_sec,ptr,s2/512);
+                    r=sd_readblock(part->start+(clu-2)*bpb->spc+data_sec,ptr,s2<512?1:s2/512);
                     clu=bpb->spf16>0?fat16[clu]:fat32[clu];
                     ptr+=s2;
                     s-=s2;
@@ -1043,7 +1040,7 @@ diskerr:
             s=initrd.size;
             while(s>0) {
                 s2=s>bpb->spc*512?bpb->spc*512:s;
-                r=sd_readblock(part->start+(clu-2)*bpb->spc+data_sec,ptr,s2/512);
+                r=sd_readblock(part->start+(clu-2)*bpb->spc+data_sec,ptr,s2<512?1:s2/512);
                 clu=bpb->spf16>0?fat16[clu]:fat32[clu];
                 ptr+=s2;
                 s-=s2;
@@ -1107,11 +1104,11 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
     bootboot->initrd_ptr=(uint64_t)&_end;
     // round up to page size
     bootboot->initrd_size=(initrd.size+PAGESIZE-1)&~(PAGESIZE-1);
+    DBG(" * Initrd loaded\n");
 #if INITRD_DEBUG
     // dump initrd in memory
     uart_dump((void*)bootboot->initrd_ptr,8);
 #endif
-    DBG(" * Initrd loaded\n");
 
     // if no config, locate it in uncompressed initrd
     if(1||*((uint8_t*)&__environment)==0) {
@@ -1192,7 +1189,7 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
         puts("BOOTBOOT-PANIC: Kernel is not a valid executable\n");
 #if DEBUG
         // dump executable
-        uart_dump((void*)core.ptr,16);
+        uart_dump((void*)core.ptr,8);
 #endif
         goto error;
     }
@@ -1382,7 +1379,6 @@ viderr:
     uart_puts(" * Entry point ");
     uart_hex(entrypoint,8);
     uart_putc('\n');
-    uart_dump(core.ptr,8);
 #endif
     asm volatile ("mov sp,#-16; mov x30, %0; ret" : : "r" (entrypoint));
 
