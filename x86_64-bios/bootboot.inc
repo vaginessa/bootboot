@@ -26,6 +26,8 @@ PROTOCOL_STATIC    equ   1
 ; dynamic protocol level:
 ;  kernel name parsed from environment, kernel memory addresses parsed from ELF symbols
 PROTOCOL_DYNAMIC   equ   2
+; big-endian flag
+PROTOCOL_BIGENDIAN equ   080h
 
 ; loader types, just informational
 LOADER_BIOS   equ   0
