@@ -59,17 +59,16 @@ typedef struct {
 #define INITRD_MAXSIZE 16 //Mb
 
 typedef struct {
-  uint8_t    magic[4];    // 'BOOT', first 72 bytes are platform independent
+  uint8_t    magic[4];    // 'BOOT', first 64 bytes are platform independent
   uint32_t   size;        // length of bootboot structure, minimum 128
 
   uint8_t    protocol;    // 1, static addresses, see PROTOCOL_* above
   uint8_t    loader_type; // see LOADER_* above
-  uint16_t   flags;
-  int16_t    timezone;    // in minutes -1440..1440
-  uint16_t   fb_type;     // framebuffer type, see FB_* above
+  uint8_t    pagesize;    // in power of two, 12 = 4096
+  uint8_t    fb_type;     // framebuffer type, see FB_* above
 
-  uint32_t   pagesize;    // 4096
-  uint32_t   bspid;       // Bootsrap processor ID (Local APIC Id on x86_64)
+  int16_t    timezone;    // in minutes -1440..1440
+  uint16_t   bspid;       // Bootsrap processor ID (Local APIC Id on x86_64)
 
   uint8_t    datetime[8]; // in BCD yyyymmddhhiiss UTC (independent to timezone)
 
@@ -82,7 +81,7 @@ typedef struct {
   uint32_t   fb_height;
   uint32_t   fb_scanline;
 
-  // the rest (56 bytes) is platform specific
+  // the rest (64 bytes) is platform specific
   union {
     struct {
       uint64_t acpi_ptr;
@@ -92,6 +91,7 @@ typedef struct {
       uint64_t unused0;
       uint64_t unused1;
       uint64_t unused2;
+      uint64_t unused3;
     } x86_64;
     struct {
       uint64_t acpi_ptr;
@@ -101,6 +101,7 @@ typedef struct {
       uint64_t unused2;
       uint64_t unused3;
       uint64_t unused4;
+      uint64_t unused5;
     } aarch64;
   };
 

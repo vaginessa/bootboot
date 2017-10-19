@@ -608,7 +608,7 @@ efi_main (EFI_HANDLE image, EFI_SYSTEM_TABLE *systab)
         "mov $1, %%eax;"
         "cpuid;"
         "shrl $24, %%ebx;"
-        "mov %%ebx,%0"
+        "mov %%bx,%0"
         : "=b"(bootboot->bspid) : : );
 
     // locate InitRD in ROM
@@ -842,7 +842,7 @@ gzerr:          return report(EFI_COMPROMISED_DATA,L"Unable to uncompress");
         bootboot->protocol=PROTOCOL_STATIC;
         bootboot->loader_type=LOADER_UEFI;
         bootboot->size=128;
-        bootboot->pagesize=PAGESIZE;
+        bootboot->pagesize=12;
         CopyMem((void *)&(bootboot->initrd_ptr),&initrd.ptr,8);
         bootboot->initrd_size=((initrd.size+PAGESIZE-1)/PAGESIZE)*PAGESIZE;
         CopyMem((void *)&(bootboot->x86_64.efi_ptr),&systab,8);

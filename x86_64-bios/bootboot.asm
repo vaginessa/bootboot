@@ -273,7 +273,7 @@ end if
             cpuid
             shr         al, 4
             shr         ebx, 24
-            mov         dword [bootboot.bspid], ebx
+            mov         word [bootboot.bspid], bx
             ;look for minimum family
             cmp         ax, 0600h
             jb          .cpuerror
@@ -355,7 +355,7 @@ getmemmap:
             mov         eax, bootboot_MAGIC
             mov         dword [bootboot.magic], eax
             mov         dword [bootboot.size], 128
-            mov         dword [bootboot.pagesize], 4096
+            mov         dword [bootboot.pagesize], 12
             mov         dword [bootboot.protocol_ver], PROTOCOL_STATIC
             mov         dword [bootboot.loader_type], LOADER_BIOS
             mov         di, bootboot.mmap
@@ -1549,16 +1549,16 @@ protmode_start:
             mov         word [bootboot.fb_height], ax
             mov         eax, dword [0A000h+828h]
             mov         dword [bootboot.fb_ptr], eax
-            mov         word [bootboot.fb_type],FB_ARGB ; blue offset
+            mov         byte [bootboot.fb_type],FB_ARGB ; blue offset
             cmp         byte [0A000h+824h], 0
             je          @f
-            mov         word [bootboot.fb_type],FB_RGBA
+            mov         byte [bootboot.fb_type],FB_RGBA
             cmp         byte [0A000h+824h], 8
             je          @f
-            mov         word [bootboot.fb_type],FB_ABGR
+            mov         byte [bootboot.fb_type],FB_ABGR
             cmp         byte [0A000h+824h], 16
             je          @f
-            mov         word [bootboot.fb_type],FB_BGRA
+            mov         byte [bootboot.fb_type],FB_BGRA
 @@:         ; set video mode
             mov         bx, cx
             bts         bx, 14 ;flat linear

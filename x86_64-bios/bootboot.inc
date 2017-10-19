@@ -64,12 +64,11 @@ virtual at bootboot
 
     bootboot.protocol_ver:db	1
     bootboot.loader_type: db	0
-    bootboot.flags:       dw	0
-    bootboot.timezone:    dw	0
-    bootboot.fb_type:     dw	0
+    bootboot.pagesize:    db	0
+    bootboot.fb_type:     db	0
 
-    bootboot.pagesize:    dd	0
-    bootboot.bspid:       dd	0
+    bootboot.timezone:    dw	0
+    bootboot.bspid:       dw	0
 
     bootboot.datetime:    dq	0
 
@@ -89,10 +88,11 @@ virtual at bootboot
       bootboot.smbi_ptr:    dq	0
       bootboot.efi_ptr:     dq	0
       bootboot.mp_ptr:      dq	0
-      bootboot.unused:      dq	0,0,0
+      bootboot.unused:      dq	0,0,0,0
 
      bootboot.mmap:
 end virtual
+
 
 
 

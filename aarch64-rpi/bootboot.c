@@ -916,7 +916,7 @@ int bootboot_main(uint64_t hcl)
     bootboot->protocol = PROTOCOL_STATIC;
     bootboot->loader_type = LOADER_RPI;
     bootboot->size = 128;
-    bootboot->pagesize = PAGESIZE;
+    bootboot->pagesize = PAGESIZE==4096? 12 : (PAGESIZE==65536 ? 16 : 14);
     bootboot->aarch64.mmio_ptr = COREMMIO_BASE;
     // set up a framebuffer so that we can write on screen
     if(!GetLFB(0, 0)) goto viderr;
@@ -975,7 +975,7 @@ diskerr:
         // locate BOOTBOOT directory
         uint32_t data_sec, root_sec, clu=0, s, s2;
         fatdir_t *dir;
-        uint32_t *fat32=(uint32_t*)((uint8_t*)&_end+512);
+        uint32_t *fat32=(uint32_t*)((uint8_t*)&_end+bpb->rsc*512);
         uint16_t *fat16=(uint16_t*)fat32;
         uint8_t *ptr;
         data_sec=root_sec=((bpb->spf16?bpb->spf16:bpb->spf32)*bpb->nf)+bpb->rsc;
