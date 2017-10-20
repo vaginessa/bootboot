@@ -81,7 +81,6 @@ _start:
 1:  wfe
     b       1b
 
-    .align  11
 _vectors:
     .align  7
     mov     x0, #0

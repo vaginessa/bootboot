@@ -101,8 +101,8 @@ typedef struct {
   uint32_t text_size;     /* size of text section(s) */
   uint32_t data_size;     /* size of data section(s) */
   uint32_t bss_size;      /* size of bss section(s) */
-  uint32_t entry_point;   /* file offset of entry point */
-  uint32_t code_base;     /* relative code addr in ram */
+  int32_t entry_point;    /* file offset of entry point */
+  int32_t code_base;      /* relative code addr in ram */
 } pe_hdr;
 
 /*** Raspberry Pi specific defines ***/
@@ -247,6 +247,7 @@ uint8_t mbox_call(uint8_t ch, volatile uint32_t *mbox)
 /* string.h */
 uint32_t strlen(unsigned char *s) { uint32_t n=0; while(*s++) n++; return n; }
 void memcpy(void *dst, void *src, uint32_t n){uint8_t *a=dst,*b=src;while(n--) *a++=*b++; }
+void memset(void *dst, uint8_t c, uint32_t n){uint8_t *a=dst;while(n--) *a++=c; }
 int memcmp(void *s1, void *s2, uint32_t n){uint8_t *a=s1,*b=s2;while(n--){if(*a!=*b){return *a-*b;}a++;b++;} return 0; }
 /* other string functions */
 int atoi(unsigned char *c) { int r=0;while(*c>='0'&&*c<='9') {r*=10;r+=*c++-'0';} return r; }
@@ -886,7 +887,7 @@ int bootboot_main(uint64_t hcl)
     uint32_t np,sp,r,pa,mp;
     efipart_t *part;
     volatile bpb_t *bpb;
-    uint64_t entrypoint=0, *paging, reg;
+    uint64_t entrypoint=0, bss=0, *paging, reg;
     MMapEnt *mmap;
 
     /* initialize UART */
@@ -1170,19 +1171,23 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
                 DBG(" * Parsing ELF64\n");
                 Elf64_Phdr *phdr=(Elf64_Phdr *)((uint8_t *)ehdr+ehdr->e_phoff);
                 for(r=0;r<ehdr->e_phnum;r++){
-                    if(phdr->p_type==PT_LOAD && phdr->p_vaddr>>48==0xffff && phdr->p_offset==0) {
-                        core.size = ((phdr->p_filesz+PAGESIZE-1)/PAGESIZE)*PAGESIZE;
-                        entrypoint=ehdr->e_entry;
+                    if(phdr->p_type==PT_LOAD && phdr->p_vaddr>>48==0xffff) {
+                        core.ptr += phdr->p_offset;
+                        core.size = phdr->p_filesz;
+                        bss = phdr->p_memsz - phdr->p_filesz;
+                        entrypoint = ehdr->e_entry;
                         break;
                     }
                     phdr=(Elf64_Phdr *)((uint8_t *)phdr+ehdr->e_phentsize);
                 }
         } else
         if(((mz_hdr*)(core.ptr))->magic==MZ_MAGIC && pehdr->magic == PE_MAGIC && 
-            pehdr->machine == IMAGE_FILE_MACHINE_ARM64 && pehdr->file_type == PE_OPT_MAGIC_PE32PLUS) {
+            pehdr->machine == IMAGE_FILE_MACHINE_ARM64 && pehdr->file_type == PE_OPT_MAGIC_PE32PLUS &&
+            (int64_t)pehdr->code_base>>48==0xffff) {
                 DBG(" * Parsing PE32+\n");
                 core.size = (pehdr->entry_point-pehdr->code_base) + pehdr->text_size + pehdr->data_size;
-                entrypoint = pehdr->entry_point;
+                bss = pehdr->bss_size;
+                entrypoint = (int64_t)pehdr->entry_point;
         }
     }
     if(core.size<2 || entrypoint==0) {
@@ -1193,12 +1198,12 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
 #endif
         goto error;
     }
-    // is core page aligned?
-    if((uint64_t)core.ptr&(PAGESIZE-1)) {
-        memcpy((void*)(bootboot->initrd_ptr+bootboot->initrd_size), core.ptr, core.size);
-        core.ptr=(uint8_t*)(bootboot->initrd_ptr+bootboot->initrd_size);
-    }
-    core.size = (core.size+PAGESIZE-1)&~(PAGESIZE-1);
+    // create core segment
+    memcpy((void*)(bootboot->initrd_ptr+bootboot->initrd_size), core.ptr, core.size);
+    core.ptr=(uint8_t*)(bootboot->initrd_ptr+bootboot->initrd_size);
+    if(bss>0)
+        memset(core.ptr + core.size, 0, bss);
+    core.size = (core.size+bss+PAGESIZE-1)&~(PAGESIZE-1);
 
     /* generate memory map to bootboot struct */
     DBG(" * Memory Map\n");
@@ -1209,17 +1214,16 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
     mmap++; bootboot->size+=sizeof(MMapEnt);
 
     // mark bss reserved 
-    mmap->ptr=(uint64_t)&__bootboot; mmap->size=((uint64_t)&_end-(uint64_t)&__bootboot) | MMAP_RESERVED;
+    mmap->ptr=(uint64_t)&__bootboot; mmap->size=((uint64_t)&_end-(uint64_t)&__bootboot) | MMAP_USED;
     mmap++; bootboot->size+=sizeof(MMapEnt);
 
     // after bss and before initrd is free
     mmap->ptr=(uint64_t)&_end; mmap->size=(bootboot->initrd_ptr-(uint64_t)&_end) | MMAP_FREE;
     mmap++; bootboot->size+=sizeof(MMapEnt);
 
-    // initrd is reserved (and add aligned core's area to it)
-    r=bootboot->initrd_size;
-    if((uint64_t)core.ptr==bootboot->initrd_ptr+r) r+=core.size;
-    mmap->ptr=bootboot->initrd_ptr; mmap->size=r | MMAP_RESERVED;
+    // initrd is reserved (and add core's area to it)
+    r=bootboot->initrd_size + core.size;
+    mmap->ptr=bootboot->initrd_ptr; mmap->size=r | MMAP_USED;
     mmap++; bootboot->size+=sizeof(MMapEnt);
     r+=(uint32_t)bootboot->initrd_ptr;
 
@@ -1255,8 +1259,8 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
         uart_hex(MMapEnt_Type(mmap),1);
         uart_putc(' ');
         switch(MMapEnt_Type(mmap)) {
+            case MMAP_USED: uart_puts("reserved"); break;
             case MMAP_FREE: uart_puts("free"); break;
-            case MMAP_RESERVED: uart_puts("reserved"); break;
             case MMAP_ACPIFREE: uart_puts("acpifree"); break;
             case MMAP_ACPINVS: uart_puts("acpinvs"); break;
             case MMAP_MMIO: uart_puts("mmio"); break;

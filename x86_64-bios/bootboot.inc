@@ -52,11 +52,11 @@ end virtual
 ; type = size & 0xF
 
 
+MMAP_USED         equ 0
 MMAP_FREE         equ 1
-MMAP_RESERVED     equ 2
-MMAP_ACPIFREE     equ 3
-MMAP_ACPINVS      equ 4
-MMAP_MMIO         equ 5
+MMAP_ACPIFREE     equ 2
+MMAP_ACPINVS      equ 3
+MMAP_MMIO         equ 4
 
 INITRD_MAXSIZE     equ 16 ; Mb
 

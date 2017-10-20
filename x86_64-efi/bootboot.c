@@ -91,8 +91,8 @@ typedef struct {
   UINT32 text_size;     /* size of text section(s) */
   UINT32 data_size;     /* size of data section(s) */
   UINT32 bss_size;      /* size of bss section(s) */
-  UINT32 entry_point;   /* file offset of entry point */
-  UINT32 code_base;     /* relative code addr in ram */
+  INT32 entry_point;    /* file offset of entry point */
+  INT32 code_base;      /* relative code addr in ram */
 } pe_hdr;
 
 /*** EFI defines and structs ***/
@@ -476,10 +476,9 @@ LoadFile(IN CHAR16 *FileName, OUT UINT8 **FileData, OUT UINTN *FileDataLength)
 EFI_STATUS
 LoadCore()
 {
-    int i=0;
-
-    core.ptr=NULL;
-    core.ptr=0;
+    int i=0,bss=0;
+    UINT8 *ptr;
+    core.ptr=ptr=NULL;
     while(core.ptr==NULL && fsdrivers[i]!=NULL) {
         core=(*fsdrivers[i++])((unsigned char*)initrd.ptr,kernelname);
     }
@@ -516,32 +515,41 @@ LoadCore()
             DBG(L" * Parsing ELF64 @%lx\n",core.ptr);
             Elf64_Phdr *phdr=(Elf64_Phdr *)((UINT8 *)ehdr+ehdr->e_phoff);
             for(i=0;i<ehdr->e_phnum;i++){
-                if(phdr->p_type==PT_LOAD && phdr->p_vaddr>>48==0xffff && phdr->p_offset==0) {
-                    core.size = ((phdr->p_filesz+PAGESIZE-1)/PAGESIZE)*PAGESIZE;
-                    // is core page aligned?
-                    if((UINT64)ehdr&(PAGESIZE-1)){
-                        uefi_call_wrapper(BS->AllocatePages, 4, 0, 2, core.size/PAGESIZE, (EFI_PHYSICAL_ADDRESS*)&core.ptr);
-                        if (core.ptr == NULL)
-                            return report(EFI_OUT_OF_RESOURCES,L"AllocatePages");
-                        CopyMem(core.ptr,ehdr,phdr->p_filesz);
-                    }
-                    entrypoint=ehdr->e_entry;
-gotcore:
-                    DBG(L" * Entry point @%lx, text @%lx %d bytes @%lx\n",entrypoint, 
-                        core.ptr, core.size, (entrypoint/PAGESIZE)*PAGESIZE+core.size);
-                    return EFI_SUCCESS;
+                if(phdr->p_type==PT_LOAD && phdr->p_vaddr>>48==0xffff) {
+                    core.size = phdr->p_filesz;
+                    ptr = (UINT8*)ehdr + phdr->p_offset;
+                    bss = phdr->p_memsz - core.size;
+                    entrypoint = ehdr->e_entry;
+                    break;
                 }
                 phdr=(Elf64_Phdr *)((UINT8 *)phdr+ehdr->e_phentsize);
             }
         } else if(((mz_hdr*)(core.ptr))->magic==MZ_MAGIC && pehdr->magic == PE_MAGIC && 
-            pehdr->machine == IMAGE_FILE_MACHINE_AMD64 && pehdr->file_type == PE_OPT_MAGIC_PE32PLUS) {
-            //Parse PE32+
-            DBG(L" * Parsing PE32+ @%lx\n",core.ptr);
-            core.size = (pehdr->entry_point-pehdr->code_base) + pehdr->text_size + pehdr->data_size;
-            entrypoint = pehdr->entry_point;
-            goto gotcore;
+            pehdr->machine == IMAGE_FILE_MACHINE_AMD64 && pehdr->file_type == PE_OPT_MAGIC_PE32PLUS &&
+            (INT64)pehdr->code_base>>48==0xffff) {
+                //Parse PE32+
+                DBG(L" * Parsing PE32+ @%lx\n",core.ptr);
+                core.size = (pehdr->entry_point-pehdr->code_base) + pehdr->text_size + pehdr->data_size;
+                ptr = core.ptr;
+                bss = pehdr->bss_size;
+                entrypoint = (INT64)pehdr->entry_point;
         }
-        return report(EFI_LOAD_ERROR,L"Kernel is not a valid executable");
+        if(ptr==NULL || core.size<2 || entrypoint==0)
+            return report(EFI_LOAD_ERROR,L"Kernel is not a valid executable");
+        // create core segment
+        uefi_call_wrapper(BS->AllocatePages, 4, 0, 2,
+            (core.size + bss + PAGESIZE-1)/PAGESIZE, (EFI_PHYSICAL_ADDRESS*)&core.ptr);
+        if (core.ptr == NULL)
+            return report(EFI_OUT_OF_RESOURCES,L"AllocatePages");
+        CopyMem((void*)core.ptr,ptr,core.size);
+        if(bss>0)
+            ZeroMem((void*)core.ptr + core.size, bss); 
+        core.size += bss;
+        DBG(L" * Entry point @%lx, text @%lx %d bytes @%lx\n",entrypoint, 
+            core.ptr, core.size, (entrypoint/PAGESIZE)*PAGESIZE+core.size);
+        core.size = ((core.size+PAGESIZE-1)/PAGESIZE)*PAGESIZE;
+        return EFI_SUCCESS;
+
     }
     return report(EFI_LOAD_ERROR,L"Kernel not found in initrd");
 }
@@ -971,6 +979,8 @@ get_memory_map:
                     mement->PhysicalStart+(mement->NumberOfPages*PAGESIZE) > (UINT64)env.ptr) ||
                  (mement->PhysicalStart <= (UINT64)initrd.ptr &&
                     mement->PhysicalStart+(mement->NumberOfPages*PAGESIZE) > (UINT64)initrd.ptr) ||
+                 (mement->PhysicalStart <= (UINT64)core.ptr &&
+                    mement->PhysicalStart+(mement->NumberOfPages*PAGESIZE) > (UINT64)core.ptr) ||
                  (mement->PhysicalStart <= (UINT64)paging &&
                     mement->PhysicalStart+(mement->NumberOfPages*PAGESIZE) > (UINT64)paging)
                 )) {
@@ -979,11 +989,10 @@ get_memory_map:
             mmapent->ptr=mement->PhysicalStart;
             mmapent->size=(mement->NumberOfPages*PAGESIZE)+
                 ((mement->Type>0&&mement->Type<5)||mement->Type==7?MMAP_FREE:
-                (mement->Type==8?MMAP_RESERVED:
                 (mement->Type==9?MMAP_ACPIFREE:
                 (mement->Type==10?MMAP_ACPINVS:
                 (mement->Type==11||mement->Type==12?MMAP_MMIO:
-                MMAP_RESERVED)))));
+                MMAP_USED))));
             // merge continous areas of the same type
             if(last!=NULL && 
                 MMapEnt_Type(last) == MMapEnt_Type(mmapent) &&

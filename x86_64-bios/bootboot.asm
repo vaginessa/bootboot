@@ -386,21 +386,30 @@ getmemmap:
             mov         eax, 15000h
             add         dword [di], eax
             sub         dword [di+8], eax
+            ;convert E820 memory type to BOOTBOOT memory type
 .notfirst:  mov         al, byte [di+16]
-            ; types >4 handled as reserved
-            cmp         al, 4
-            jbe         .noov
-            mov         al, 2
+            cmp         al, 1
+            je          .noov
+            cmp         al, 3
+            jne         @f
+            mov         al, MMAP_ACPIFREE
+            jmp         .noov
+@@:         cmp         al, 4
+            jne         @f
+            mov         al, MMAP_ACPINVS
+            jmp         .noov
+            ; everything else reserved
+@@:         mov         al, MMAP_USED
 .noov:      ;copy memory type to size's least significant byte
             mov         byte [di+8], al
             xor         ecx, ecx
             ;is it ACPI area?
-            cmp         al, 3
+            cmp         al, MMAP_ACPIFREE
             jne         .notacpi
             mov         dword [bootboot.acpi_ptr], edi
             jmp         .entryok
             ;is it free slot?
-.notacpi:   cmp         al, 1
+.notacpi:   cmp         al, MMAP_FREE
             jne         .notmax
 .freemem:   ;do we have a ramdisk area?
             cmp         dword [bootboot.initrd_ptr], 0
@@ -1169,6 +1178,12 @@ protmode_start:
             add         esi, 2
 @@:         call        tinf_uncompress
 .noinflate:
+            ;round up to page size
+            mov         eax, dword [bootboot.initrd_size]
+            add         eax, 4095
+            shr         eax, 12
+            shl         eax, 12
+            mov         dword [bootboot.initrd_size], eax
 
             ;do we have an environment configuration?
             mov         ebx, 9000h
@@ -1345,27 +1360,28 @@ protmode_start:
             ; parse PE
             cmp         word [esi], 5A4Dh      ; MZ magic
             jne         .tryelf
-            mov         ebx, dword [esi+0x3c]
-            add         ebx, esi
-            cmp         dword [ebx], 00004550h ; PE magic
+            mov         ebx, esi
+            add         esi, dword [esi+0x3c]
+            cmp         dword [esi], 00004550h ; PE magic
             jne         .badcore
-            cmp         word [ebx+4], 8664h    ; x86_64 architecture
+            cmp         word [esi+4], 8664h    ; x86_64 architecture
             jne         .badcore
-            cmp         word [ebx+20], 20Bh    ; PE32+ format
+            cmp         word [esi+20], 20Bh    ; PE32+ format
             jne         .badcore
 
             DBG32       dbg_pe
 
-            mov         dword [core_ptr], esi
-
-            mov         eax, dword [ebx+36]    ; entry point
+            mov         eax, dword [esi+36]    ; entry point
             mov         dword [entrypoint], eax
-            mov         dword [entrypoint+4], 0
-            mov         eax, dword [ebx+40]    ; - code base
-            add         eax, dword [ebx+24]    ; + text size
-            add         eax, dword [ebx+28]    ; + data size
-            mov         dword [core_len], eax
-            jmp         .aligned
+            mov         dword [entrypoint+4], 0FFFFFFFFh
+            mov         ecx, eax
+            sub         ecx, dword [esi+40]    ; - code base
+            add         ecx, dword [esi+24]    ; + text size
+            add         ecx, dword [esi+28]    ; + data size
+            mov         edx, dword [esi+32]    ; bss size
+            shr         eax, 31
+            jz          .badcore
+            jmp         .mkcore
 
             ; parse ELF
 .tryelf:    cmp         dword [esi], 5A2F534Fh ; OS/Z magic
@@ -1386,7 +1402,7 @@ protmode_start:
             mov         dword [entrypoint], eax
             mov         eax, dword [esi+0x18+4]
             mov         dword [entrypoint+4], eax
-            ;parse ELF binary and save text section address to dword[core_ptr]
+            ;parse ELF binary
             mov         cx, word [esi+0x38]     ; program header entries phnum
             mov         eax, dword [esi+0x20]   ; program header
             add         esi, eax
@@ -1397,50 +1413,66 @@ protmode_start:
             jz          .badcore
             cmp         word [esi], 1               ; p_type, loadable
             jne         .nextph
-            cmp         dword [esi+8], 0            ; p_offset == 0
-            jne         .nextph
             cmp         word [esi+22], 0FFFFh       ; p_vaddr == negative address
             jne         .nextph
             ;got it
-            mov         dword [core_ptr], ebx
+            add         ebx, dword [esi+8]          ; + P_offset
             mov         ecx, dword [esi+32]         ; p_filesz
+            mov         edx, dword [esi+40]         ; p_memsz
+            sub         edx, ecx
+
+            ;ebx=ptr to core segment, ecx=segment size, edx=bss size
+.mkcore:    or          ecx, ecx
+            jz          .badcore
+            mov         edi, dword [bootboot.initrd_ptr]
+            add         edi, dword [bootboot.initrd_size]
+            mov         dword [core_ptr], edi
             mov         dword [core_len], ecx
-
-            mov         edx, dword [bootboot.initrd_ptr]
-            add         edx, dword [bootboot.initrd_size]
-            add         edx, 4095
-            shr         edx, 12
-            shl         edx, 12
-
-            ; is core page aligned?
-            mov         eax, ebx
-            and         eax, 0FFFh
-            or          eax, eax
-            jz          .aligned
+            ;copy code from segment after initrd
             mov         esi, ebx
-            mov         edi, edx
-            mov         dword [core_ptr], edx
-            add         edx, ecx
-            add         edx, 4095
-            shr         edx, 12
-            shl         edx, 12
-            add         ecx, 3
+            mov         ebx, ecx
+            and         bl, 3
             shr         ecx, 2
             repnz       movsd
+            or          bl, bl
+            jz          @f
+            mov         cl, bl
+            repnz       movsb
+            ;zero out bss
+@@:         or          edx, edx
+            jz          @f
+            add         dword [core_len], edx
+            xor         eax, eax
+            mov         ecx, edx
+            and         dl, 3
+            shr         ecx, 2
+            repnz       stosd
+            or          dl, dl
+            jz          @f
+            mov         cl, dl
+            repnz       stosb
+            ;round up to page size
+@@:         mov         eax, dword [core_len]
+            add         eax, 4095
+            shr         eax, 12
+            shl         eax, 12
+            mov         dword [core_len], eax
 
-            ; exclude initrd area from free mmap
-.aligned:   mov         esi, bootboot.mmap
+            ;exclude initrd area and core from free mmap
+            mov         esi, bootboot.mmap
             mov         ebx, dword [bootboot.initrd_ptr]
+            mov         edx, dword [core_ptr]
+            add         edx, eax
             mov         cx, 248
             ;  +---------------------+    free
             ;  #######                    initrd (ebx..edx)
 .nextfree:  cmp         dword [esi], ebx
             jne         .notini
-            ; ptr = initr_ptr+initrd_size
+            ; ptr = initr_ptr+initrd_size+core_len
             mov         dword [esi], edx
             sub         edx, ebx
             and         dl, 0F0h
-            ; size -= initrd_size
+            ; size -= initrd_size+core_len
             sub         dword [esi+8], edx
             jmp         @f
 .notini:    add         esi, 16
