@@ -21,7 +21,7 @@
 #include "../bootboot.h"
 
 /* aligned buffers */
-volatile uint32_t  __attribute__((aligned(16))) mbox[32];
+volatile uint32_t  __attribute__((aligned(16))) mbox[36];
 /* we place these manually in linker script, gcc would otherwise waste lots of memory */
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __bootboot[PAGESIZE];
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __environment[PAGESIZE];
@@ -733,7 +733,7 @@ int GetLFB(uint32_t width, uint32_t height)
     if(width<800 || height<600) {
         width=800; height=600;
     }
-    mbox[0] = 31*4;
+    mbox[0] = 35*4;
     mbox[1] = MBOX_REQUEST;
 
     mbox[2] = 0x48003;  //set phy wh
@@ -759,27 +759,32 @@ int GetLFB(uint32_t width, uint32_t height)
     mbox[19] = 4;
     mbox[20] = 32;      //only RGBA supported
 
-    mbox[21] = 0x40001; //get framebuffer
-    mbox[22] = 8;       //response size
-    mbox[23] = 8;       //request size
-    mbox[24] = PAGESIZE;//buffer alignment
-    mbox[25] = 0;
-    
-    mbox[26] = 0x40008; //get pitch
-    mbox[27] = 4;
-    mbox[28] = 4;
+    mbox[21] = 0x48006; //set pixel order
+    mbox[22] = 4;
+    mbox[23] = 4;
+    mbox[24] = 0;       //RGB, not BGR
+
+    mbox[25] = 0x40001; //get framebuffer
+    mbox[26] = 8;       //response size
+    mbox[27] = 8;       //request size
+    mbox[28] = PAGESIZE;//buffer alignment
     mbox[29] = 0;
+    
+    mbox[30] = 0x40008; //get pitch
+    mbox[31] = 4;
+    mbox[32] = 4;
+    mbox[33] = 0;
 
-    mbox[30] = 0;       //Arnold Schwarzenegger
+    mbox[34] = 0;       //Arnold Schwarzenegger
 
-    if(mbox_call(MBOX_CH_PROP,mbox) && mbox[20]==32 && mbox[23]==(MBOX_RESPONSE|8) && mbox[25]!=0) {
-        mbox[24]&=0x3FFFFFFF;
+    if(mbox_call(MBOX_CH_PROP,mbox) && mbox[20]==32 && mbox[27]==(MBOX_RESPONSE|8) && mbox[28]!=0) {
+        mbox[28]&=0x3FFFFFFF;
         bootboot->fb_width=mbox[5];
         bootboot->fb_height=mbox[6];
-        bootboot->fb_scanline=mbox[29];
-        bootboot->fb_ptr=(void*)((uint64_t)mbox[24]);
-        bootboot->fb_size=mbox[25];
-        bootboot->fb_type=FB_ARGB;
+        bootboot->fb_scanline=mbox[33];
+        bootboot->fb_ptr=(void*)((uint64_t)mbox[28]);
+        bootboot->fb_size=mbox[29];
+        bootboot->fb_type=mbox[24]?FB_ABGR:FB_ARGB;
         kx=ky=0;
         maxx=bootboot->fb_width/(font->width+1);
         maxy=bootboot->fb_height/font->height;
@@ -1296,7 +1301,7 @@ viderr:
     // LLBR1, core L2
     // map MMIO in kernel space
     for(r=0;r<16;r++)
-        paging[512+464+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b11|(1<<10)|(1<<2);
+        paging[512+464+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b01|(1<<10)|(1<<2);
     // map framebuffer
     for(r=0;r<16;r++)
         paging[512+480+r]=(uint64_t)((uint8_t*)&__paging+(4+r)*PAGESIZE)|0b11|(1<<10);
