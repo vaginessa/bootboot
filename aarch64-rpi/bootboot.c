@@ -25,7 +25,7 @@ volatile uint32_t  __attribute__((aligned(16))) mbox[36];
 /* we place these manually in linker script, gcc would otherwise waste lots of memory */
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __bootboot[PAGESIZE];
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __environment[PAGESIZE];
-volatile uint8_t __attribute__((aligned(PAGESIZE))) __paging[20*PAGESIZE];
+volatile uint8_t __attribute__((aligned(PAGESIZE))) __paging[23*PAGESIZE];
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __corestack[PAGESIZE];
 #define __diskbuf __paging
 extern volatile uint8_t _end;
@@ -1288,63 +1288,75 @@ viderr:
 
     /* create MMU translation tables in __paging */
     paging=(uint64_t*)&__paging;
-    // LLBR0, identity L2
-    paging[0]=(uint64_t)((uint8_t*)&__paging+3*PAGESIZE)|0b11|(1<<10); //AF=1,Block=1,Present=1
+    // LLBR0, identity L1
+    paging[0]=(uint64_t)((uint8_t*)&__paging+2*PAGESIZE)|0b11|(1<<10); //AF=1,Block=1,Present=1
+    // identity L2
+    paging[2*512]=(uint64_t)((uint8_t*)&__paging+3*PAGESIZE)|0b11|(1<<10); //AF=1,Block=1,Present=1
     // identity L2 2M blocks
     mp>>=21;
     np=MMIO_BASE>>21;
     for(r=1;r<512;r++)
-        paging[r]=(uint64_t)(((uint64_t)r<<21))|0b01|(1<<10)|(r>=np?1<<2:0);
+        paging[2*512+r]=(uint64_t)(((uint64_t)r<<21))|0b01|(1<<10)|(r>=np?1<<2:0);
     // identity L3
     for(r=0;r<512;r++)
         paging[3*512+r]=(uint64_t)(r*PAGESIZE)|0b11|(1<<10);
-    // LLBR1, core L2
+    // LLBR1, core L1
+    paging[512+511]=(uint64_t)((uint8_t*)&__paging+4*PAGESIZE)|0b11|(1<<10); //AF=1,Block=1,Present=1
+    // core L2
     // map MMIO in kernel space
     for(r=0;r<16;r++)
-        paging[512+464+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b01|(1<<10)|(1<<2);
+        paging[4*512+464+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b01|(1<<10)|(1<<2);
     // map framebuffer
     for(r=0;r<16;r++)
-        paging[512+480+r]=(uint64_t)((uint8_t*)&__paging+(4+r)*PAGESIZE)|0b11|(1<<10);
-    paging[512+511]=(uint64_t)((uint8_t*)&__paging+2*PAGESIZE)|0b11|(1<<10);// pointer to core L3
+        paging[4*512+480+r]=(uint64_t)((uint8_t*)&__paging+(6+r)*PAGESIZE)|0b11|(1<<10);
+    paging[4*512+511]=(uint64_t)((uint8_t*)&__paging+5*PAGESIZE)|0b11|(1<<10);// pointer to core L3
     // core L3
-    paging[2*512+0]=(uint64_t)((uint8_t*)&__bootboot)|0b11|(1<<10);  // p, b, AF
-    paging[2*512+1]=(uint64_t)((uint8_t*)&__environment)|0b11|(1<<10);
+    paging[5*512+0]=(uint64_t)((uint8_t*)&__bootboot)|0b11|(1<<10);  // p, b, AF
+    paging[5*512+1]=(uint64_t)((uint8_t*)&__environment)|0b11|(1<<10);
     for(r=0;r<(core.size/PAGESIZE)+1;r++)
-        paging[2*512+2+r]=(uint64_t)((uint8_t *)core.ptr+(uint64_t)r*PAGESIZE)|0b11|(1<<10);
-    paging[2*512+511]=(uint64_t)((uint8_t*)&__corestack)|0b11|(1<<10); // core stack
+        paging[5*512+2+r]=(uint64_t)((uint8_t *)core.ptr+(uint64_t)r*PAGESIZE)|0b11|(1<<10);
+    paging[5*512+511]=(uint64_t)((uint8_t*)&__corestack)|0b11|(1<<10); // core stack
     // core L3 (lfb)
     for(r=0;r<16*512;r++)
-        paging[4*512+r]=(uint64_t)((uint8_t*)bootboot->fb_ptr+r*PAGESIZE)|0b11|(1<<10); //map framebuffer
+        paging[6*512+r]=(uint64_t)((uint8_t*)bootboot->fb_ptr+r*PAGESIZE)|0b11|(1<<10); //map framebuffer
 
 #if MEM_DEBUG
     /* dump page translation tables */
-    uart_puts("\nTTBR0\n L2 ");
+    uart_puts("\nTTBR0\n L1 ");
     uart_hex((uint64_t)&__paging,8);
     uart_puts("\n  ");
-    for(r=0;r<4;r++) { uart_hex(paging[r],8); uart_putc(' '); }
+    uart_hex((uint64_t)paging[0],8);
+    uart_puts(" ...\n L2 ");
+    uart_hex((uint64_t)&paging[2*512],8);
+    uart_puts("\n  ");
+    for(r=0;r<4;r++) { uart_hex(paging[2*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
-    for(r=mp-4;r<mp;r++) { uart_hex(paging[r],8); uart_putc(' '); }
+    for(r=mp-4;r<mp;r++) { uart_hex(paging[2*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
-    for(r=np;r<np+4;r++) { uart_hex(paging[r],8); uart_putc(' '); }
+    for(r=np;r<np+4;r++) { uart_hex(paging[2*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
-    for(r=508;r<512;r++) { uart_hex(paging[r],8); uart_putc(' '); }
+    for(r=508;r<512;r++) { uart_hex(paging[2*512+r],8); uart_putc(' '); }
     uart_puts("\n L3 "); uart_hex((uint64_t)&paging[3*512],8); uart_puts("\n  ");
     for(r=0;r<4;r++) { uart_hex(paging[3*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
     for(r=508;r<512;r++) { uart_hex(paging[3*512+r],8); uart_putc(' '); }
 
-    uart_puts("\n\nTTBR1\n L2 ");
+    uart_puts("\n\nTTBR1\n L1 ");
     uart_hex((uint64_t)&paging[512],8);
+    uart_puts("\n  ... ");
+    uart_hex((uint64_t)paging[512+511],8);
+    uart_puts("\n L2 ");
+    uart_hex((uint64_t)&paging[4*512],8);
     uart_puts("\n  ... (skipped 464) ... ");
-    for(r=464;r<468;r++) { uart_hex(paging[512+r],8); uart_putc(' '); }
+    for(r=464;r<468;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
-    for(r=480;r<484;r++) { uart_hex(paging[512+r],8); uart_putc(' '); }
+    for(r=480;r<484;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
-    for(r=508;r<512;r++) { uart_hex(paging[512+r],8); uart_putc(' '); }
-    uart_puts("\n L3 "); uart_hex((uint64_t)&paging[2*512],8); uart_puts("\n  ");
-    for(r=0;r<6;r++) { uart_hex(paging[2*512+r],8); uart_putc(' '); }
+    for(r=508;r<512;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
+    uart_puts("\n L3 "); uart_hex((uint64_t)&paging[5*512],8); uart_puts("\n  ");
+    for(r=0;r<6;r++) { uart_hex(paging[5*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
-    for(r=508;r<512;r++) { uart_hex(paging[2*512+r],8); uart_putc(' '); }
+    for(r=508;r<512;r++) { uart_hex(paging[5*512+r],8); uart_putc(' '); }
     uart_puts("\n\n");
 #endif
     // enable paging
@@ -1359,13 +1371,13 @@ viderr:
         (0b11LL << 26) | // ORGN1=3 write back
         (0b11LL << 24) | // IRGN1=3 write back
         (0b0LL  << 23) | // EPD1 undocumented by ARM DEN0024A Fig 12-5, 12-6
-        (34LL   << 16) | // T1SZ=34, 2 levels
+        (25LL   << 16) | // T1SZ=25, 3 levels (512G)
         (0b00LL << 14) | // TG0=4k
         (0b11LL << 12) | // SH0=3 inner
         (0b11LL << 10) | // ORGN0=3 write back
         (0b11LL << 8) |  // IRGN0=3 write back
         (0b0LL  << 7) |  // EPD0 undocumented by ARM DEN0024A Fig 12-5, 12-6
-        (34LL   << 0);   // T0SZ=34, 2 levels
+        (25LL   << 0);   // T0SZ=25, 3 levels (512G)
     asm volatile ("msr ttbr0_el1, %0" : : "r" ((uint64_t)&__paging));
     asm volatile ("msr ttbr1_el1, %0" : : "r" ((uint64_t)&__paging+PAGESIZE));
     asm volatile ("msr tcr_el1, %0; isb" : : "r" (reg));

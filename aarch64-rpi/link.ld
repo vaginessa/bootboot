@@ -16,7 +16,7 @@ SECTIONS
         __environment = .;
         . += 4096;
         __paging = .;
-        . += (20*4096);
+        . += (23*4096);
         __corestack = .;
         . += 4096;
         __bss_end = .;
