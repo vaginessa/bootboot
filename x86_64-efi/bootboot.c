@@ -8,8 +8,16 @@
  *
  */
 
-//#define DBG(fmt, ...) do{Print(fmt,__VA_ARGS__); }while(0);
+// DEBUG defined in efidebug.h
+
+#define BBDEBUG 1
+//#define GOP_DEBUG BBDEBUG
+
+#if BBDEBUG
+#define DBG(fmt, ...) do{Print(fmt,__VA_ARGS__); }while(0);
+#else
 #define DBG(fmt, ...)
+#endif
 
 // get UEFI functions and environment
 #include <efi.h>
@@ -376,6 +384,7 @@ GetLFB()
         }
         // make gcc happy
         if(valid){}
+#if GOP_DEBUG
         DBG(L"    %c%2d %4d x %4d, %d%c ", i==selectedMode?'+':(i==nativeMode?'-':' '),
             i, info->HorizontalResolution, info->VerticalResolution, info->PixelFormat,valid?' ':'?');
         DBG(L"r:%x g:%x b:%x\n",
@@ -388,6 +397,7 @@ GetLFB()
                 info->PixelFormat==PixelRedGreenBlueReserved8BitPerColor?0xff0000:(
                 info->PixelFormat==PixelBlueGreenRedReserved8BitPerColor?0xff:(
                 info->PixelFormat==PixelBitMask?info->PixelInformation.BlueMask:0)));
+#endif
     }
     // if we have found a new, better mode
     if(selectedMode != 9999 && selectedMode != nativeMode) {
@@ -484,6 +494,7 @@ LoadCore()
     }
     // if every driver failed, try brute force, scan for the first elf or pe executable
     if(core.ptr==NULL) {
+        DBG(L" * Autodetecting kernel%s\n","");
         i=initrd.size;
         core.ptr=initrd.ptr;
         while(i-->0) {
@@ -516,7 +527,8 @@ LoadCore()
             Elf64_Phdr *phdr=(Elf64_Phdr *)((UINT8 *)ehdr+ehdr->e_phoff);
             for(i=0;i<ehdr->e_phnum;i++){
                 if(phdr->p_type==PT_LOAD && phdr->p_vaddr>>48==0xffff) {
-                    core.size = phdr->p_filesz;
+                    // hack to keep symtab and strtab for shared libraries
+                    core.size = phdr->p_filesz + (ehdr->e_type==3?0x4000:0);
                     ptr = (UINT8*)ehdr + phdr->p_offset;
                     bss = phdr->p_memsz - core.size;
                     entrypoint = ehdr->e_entry;
@@ -545,8 +557,7 @@ LoadCore()
         if(bss>0)
             ZeroMem((void*)core.ptr + core.size, bss); 
         core.size += bss;
-        DBG(L" * Entry point @%lx, text @%lx %d bytes @%lx\n",entrypoint, 
-            core.ptr, core.size, (entrypoint/PAGESIZE)*PAGESIZE+core.size);
+        DBG(L" * Entry point @%lx, text @%lx %d bytes\n",entrypoint, core.ptr, core.size);
         core.size = ((core.size+PAGESIZE-1)/PAGESIZE)*PAGESIZE;
         return EFI_SUCCESS;
 
@@ -856,6 +867,7 @@ gzerr:          return report(EFI_COMPROMISED_DATA,L"Unable to uncompress");
         CopyMem((void *)&(bootboot->x86_64.efi_ptr),&systab,8);
 
         // System tables and structures
+        DBG(L" * System tables%s\n","");
         LibGetSystemConfigurationTable(&AcpiTableGuid,(void *)&(bootboot->x86_64.acpi_ptr));
         LibGetSystemConfigurationTable(&SMBIOSTableGuid,(void *)&(bootboot->x86_64.smbi_ptr));
         LibGetSystemConfigurationTable(&MpsTableGuid,(void *)&(bootboot->x86_64.mp_ptr));

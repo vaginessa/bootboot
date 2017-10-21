@@ -7,7 +7,7 @@
  * @brief Boot loader for the Raspberry Pi 3+ ARMv8
  *
  */
-#define DEBUG 0
+#define DEBUG 1
 //#define SD_DEBUG DEBUG
 //#define INITRD_DEBUG DEBUG
 //#define MEM_DEBUG DEBUG
@@ -814,7 +814,7 @@ void putc(char c)
             line=offs;
             mask=1<<(font->width-1);
             for(x=0;x<font->width;x++){
-                *((uint32_t*)((uint64_t)bootboot->fb_ptr + line))=((int)*glyph) & (mask)?0xFFFFFF:0;
+                *((uint32_t*)((uint64_t)bootboot->fb_ptr + line))=((int)*glyph) & (mask)?0xC0C0C0:0;
                 mask>>=1;
                 line+=4;
             }
@@ -1117,7 +1117,7 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
 #endif
 
     // if no config, locate it in uncompressed initrd
-    if(1||*((uint8_t*)&__environment)==0) {
+    if(*((uint8_t*)&__environment)==0) {
         r=0; env.ptr=NULL;
         while(env.ptr==NULL && fsdrivers[r]!=NULL) {
             env=(*fsdrivers[r++])((unsigned char*)bootboot->initrd_ptr,cfgname);
@@ -1178,8 +1178,9 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
                 for(r=0;r<ehdr->e_phnum;r++){
                     if(phdr->p_type==PT_LOAD && phdr->p_vaddr>>48==0xffff) {
                         core.ptr += phdr->p_offset;
-                        core.size = phdr->p_filesz;
-                        bss = phdr->p_memsz - phdr->p_filesz;
+                        // hack to keep symtab and strtab for shared libraries
+                        core.size = phdr->p_filesz + (ehdr->e_type==3?0x4000:0);
+                        bss = phdr->p_memsz - core.size;
                         entrypoint = ehdr->e_entry;
                         break;
                     }

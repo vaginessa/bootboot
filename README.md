@@ -5,14 +5,14 @@ I provide pre-compiled images ready for use.
 
 1. *x86_64-efi* the preferred way of booting on x86_64 architecture.
     Standard GNU toolchain and a few files from gnuefi (included).
-    [bootboot.efi](https://github.com/bztsrc/bootboot/blob/master/bootboot.efi?raw=true) (74k), [bootboot.rom](https://github.com/bztsrc/bootboot/blob/master/bootboot.rom?raw=true) (74k)
+    [bootboot.efi](https://github.com/bztsrc/bootboot/blob/master/bootboot.efi?raw=true) (76k), [bootboot.rom](https://github.com/bztsrc/bootboot/blob/master/bootboot.rom?raw=true) (76k)
 
 2. *x86_64-bios* BIOS and Multiboot (GRUB) compatible, OBSOLETE loader.
     If you want to recompile this, you'll need fasm (not included).
     [boot.bin](https://github.com/bztsrc/bootboot/blob/master/boot.bin?raw=true) (512 bytes, works as MBR and VBR too), [bootboot.bin](https://github.com/bztsrc/bootboot/blob/master/bootboot.bin?raw=true) (8k)
 
 3. *aarch64-rpi* ARMv8 boot loader for Raspberry Pi 3
-    [bootboot.img](https://github.com/bztsrc/bootboot/blob/master/bootboot.img?raw=true) (22k)
+    [bootboot.img](https://github.com/bztsrc/bootboot/blob/master/bootboot.img?raw=true) (24k)
 
 4. *mykernel* an example BOOTBOOT [compatible kernel](https://github.com/bztsrc/bootboot/blob/master/mykernel) in C which draws lines and boxes
 
@@ -238,7 +238,7 @@ void _start()
 
 For compilation, see example bootboot kernel's [Makefile](https://github.com/bztsrc/bootboot/blob/master/mykernel/Makefile) and
 [link.ld](https://github.com/bztsrc/bootboot/blob/master/mykernel/link.ld). For a more complex, real OS example, see
-[src/core/(platform)/supervisor.ld](https://github.com/bztsrc/osz/blob/master/src/core/x86_64/supervisor.ld).
+[src/core/link.ld](https://github.com/bztsrc/osz/blob/master/src/core/link.ld).
 
 Installation
 ------------

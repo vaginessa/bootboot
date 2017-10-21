@@ -33,7 +33,7 @@
 ;*  At first big enough free hole, initrd. Usually at 1Mbyte.
 ;*
 
-DEBUG equ 0
+DEBUG equ 1
 
 ;get Core boot parameter block
 include "bootboot.inc"
@@ -1329,6 +1329,7 @@ protmode_start:
 .errfs2:    mov         esi, nocore
             jmp         prot_diefunc
 .errfs:     ; if all drivers failed, search for the first elf executable
+            DBG32       dbg_scan
             mov         esi, dword [bootboot.initrd_ptr]
             mov         ecx, dword [bootboot.initrd_size]
             add         ecx, esi
@@ -1418,7 +1419,11 @@ protmode_start:
             ;got it
             add         ebx, dword [esi+8]          ; + P_offset
             mov         ecx, dword [esi+32]         ; p_filesz
-            mov         edx, dword [esi+40]         ; p_memsz
+            ; hack to keep symtab and strtab for shared libraries
+            cmp         byte [ebx+16], 3
+            jne         @f
+            add         ecx, 04000h
+@@:         mov         edx, dword [esi+40]         ; p_memsz
             sub         edx, ecx
 
             ;ebx=ptr to core segment, ecx=segment size, edx=bss size
@@ -1802,6 +1807,7 @@ dbg_time    db          " * System time",10,13,0
 dbg_env     db          " * Environment",10,13,0
 dbg_initrd  db          " * Initrd loaded",10,13,0
 dbg_gzinitrd db         " * Gzip compressed initrd",10,13,0
+dbg_scan    db          " * Autodetecting kernel",10,13,0
 dbg_elf     db          " * Parsing ELF64",10,13,0
 dbg_pe      db          " * Parsing PE32+",10,13,0
 dbg_vesa    db          " * Screen VESA VBE",10,13,0
