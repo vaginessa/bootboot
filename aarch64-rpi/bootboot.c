@@ -1223,14 +1223,17 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
     mmap->ptr=(uint64_t)&__bootboot; mmap->size=((uint64_t)&_end-(uint64_t)&__bootboot) | MMAP_USED;
     mmap++; bootboot->size+=sizeof(MMapEnt);
 
-    // after bss and before initrd is free
-    mmap->ptr=(uint64_t)&_end; mmap->size=(bootboot->initrd_ptr-(uint64_t)&_end) | MMAP_FREE;
-    mmap++; bootboot->size+=sizeof(MMapEnt);
-
-    // initrd is reserved (and add core's area to it)
     r=bootboot->initrd_size + core.size;
-    mmap->ptr=bootboot->initrd_ptr; mmap->size=r | MMAP_USED;
-    mmap++; bootboot->size+=sizeof(MMapEnt);
+    // after bss and before initrd is free
+    if(bootboot->initrd_ptr-(uint64_t)&_end) {
+        mmap->ptr=(uint64_t)&_end; mmap->size=(bootboot->initrd_ptr-(uint64_t)&_end) | MMAP_FREE;
+        mmap++; bootboot->size+=sizeof(MMapEnt);
+        // initrd is reserved (and add core's area to it)
+        mmap->ptr=bootboot->initrd_ptr; mmap->size=r | MMAP_USED;
+        mmap++; bootboot->size+=sizeof(MMapEnt);
+    } else {
+        mmap--; mmap->size+=r; mmap++;
+    }
     r+=(uint32_t)bootboot->initrd_ptr;
 
     mbox[0]=8*4;
