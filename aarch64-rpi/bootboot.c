@@ -1314,7 +1314,7 @@ viderr:
     // core L3
     paging[5*512+0]=(uint64_t)((uint8_t*)&__bootboot)|0b11|(1<<10);  // p, b, AF
     paging[5*512+1]=(uint64_t)((uint8_t*)&__environment)|0b11|(1<<10);
-    for(r=0;r<(core.size/PAGESIZE)+1;r++)
+    for(r=0;r<(core.size/PAGESIZE);r++)
         paging[5*512+2+r]=(uint64_t)((uint8_t *)core.ptr+(uint64_t)r*PAGESIZE)|0b11|(1<<10);
     paging[5*512+511]=(uint64_t)((uint8_t*)&__corestack)|0b11|(1<<10); // core stack
     // core L3 (lfb)
