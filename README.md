@@ -12,7 +12,7 @@ I provide pre-compiled images ready for use.
     [boot.bin](https://github.com/bztsrc/bootboot/blob/master/boot.bin?raw=true) (512 bytes, works as MBR and VBR too), [bootboot.bin](https://github.com/bztsrc/bootboot/blob/master/bootboot.bin?raw=true) (8k)
 
 3. *aarch64-rpi* ARMv8 boot loader for Raspberry Pi 3
-    [bootboot.img](https://github.com/bztsrc/bootboot/blob/master/bootboot.img?raw=true) (26k)
+    [bootboot.img](https://github.com/bztsrc/bootboot/blob/master/bootboot.img?raw=true) (27k)
 
 4. *mykernel* an example BOOTBOOT [compatible kernel](https://github.com/bztsrc/bootboot/blob/master/mykernel) in C which draws lines and boxes
 

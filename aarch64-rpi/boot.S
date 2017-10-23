@@ -89,6 +89,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #1
@@ -96,6 +98,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #2
@@ -103,6 +107,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #3
@@ -110,6 +116,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
 
     .align  7
@@ -118,6 +126,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #5
@@ -125,6 +135,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #6
@@ -132,6 +144,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #7
@@ -139,6 +153,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
 
     .align  7
@@ -147,6 +163,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #9
@@ -154,6 +172,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #10
@@ -161,6 +181,8 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc
     .align  7
     mov     x0, #11
@@ -168,4 +190,6 @@ _vectors:
     mrs     x2, elr_el1
     mrs     x3, spsr_el1
     mrs     x4, far_el1
+    mrs     x5, sctlr_el1
+    mrs     x6, tcr_el1
     b       uart_exc

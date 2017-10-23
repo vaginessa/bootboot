@@ -28,9 +28,11 @@ volatile uint8_t __attribute__((aligned(PAGESIZE))) __environment[PAGESIZE];
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __paging[23*PAGESIZE];
 volatile uint8_t __attribute__((aligned(PAGESIZE))) __corestack[PAGESIZE];
 #define __diskbuf __paging
+extern volatile uint8_t _data;
 extern volatile uint8_t _end;
 
 /* forward definitions */
+uint32_t color=0xC0C0C0;
 void putc(char c);
 void puts(char *s);
 
@@ -180,9 +182,15 @@ void uart_dump(void *ptr,uint32_t l) {
         uart_putc('\n');
     }
 }
-void uart_exc(uint64_t idx, uint64_t esr, uint64_t elr, uint64_t spsr, uint64_t far)
+void uart_exc(uint64_t idx, uint64_t esr, uint64_t elr, uint64_t spsr, uint64_t far, uint64_t sctlr, uint64_t tcr)
 {
-    uint32_t r;
+    register uint64_t r;
+    asm volatile ("msr ttbr0_el1, %0" : : "r" ((uint64_t)&__paging+1));
+    asm volatile ("dsb ish; isb; mrs %0, sctlr_el1" : "=r" (r));
+    // set mandatory reserved bits
+    r&=~((1<<12) |   // clear I, no instruction cache
+         (1<<2));    // clear C, no cache at all
+    asm volatile ("msr sctlr_el1, %0; isb" : : "r" (r));
     puts("\nBOOTBOOT-EXCEPTION");
     uart_puts(" #");
     uart_hex(idx,1);
@@ -194,8 +202,12 @@ void uart_exc(uint64_t idx, uint64_t esr, uint64_t elr, uint64_t spsr, uint64_t 
     uart_hex(spsr,8);
     uart_puts(" FAR_EL1 ");
     uart_hex(far,8);
+    uart_puts("\nSCTLR_EL1 ");
+    uart_hex(sctlr,8);
+    uart_puts(" TCR_EL1 ");
+    uart_hex(tcr,8);
     uart_putc('\n');
-    while(r!='\n' && r!=' ') r=uart_getc();
+    r=0; while(r!='\n' && r!=' ') r=uart_getc();
     uart_puts("\n\n"); delaym(1000);
     *PM_WATCHDOG = PM_WDOG_MAGIC | 1;
     *PM_RTSC = PM_WDOG_MAGIC | PM_RTSC_FULLRST;
@@ -814,7 +826,7 @@ void putc(char c)
             line=offs;
             mask=1<<(font->width-1);
             for(x=0;x<font->width;x++){
-                *((uint32_t*)((uint64_t)bootboot->fb_ptr + line))=((int)*glyph) & (mask)?0xC0C0C0:0;
+                *((uint32_t*)((uint64_t)bootboot->fb_ptr + line))=((int)*glyph) & (mask)?color:0;
                 mask>>=1;
                 line+=4;
             }
@@ -1289,40 +1301,41 @@ viderr:
             goto error;
         }
     }
+    kx=ky=0; color=0xFFDD33;
 
     /* create MMU translation tables in __paging */
     paging=(uint64_t*)&__paging;
     // LLBR0, identity L1
-    paging[0]=(uint64_t)((uint8_t*)&__paging+2*PAGESIZE)|0b11|(1<<10); //AF=1,Block=1,Present=1
+    paging[0]=(uint64_t)((uint8_t*)&__paging+2*PAGESIZE)|0b11|(3<<8)|(1<<10); //AF=1,Block=1,Present=1, SH=3 ISH, RO
     // identity L2
-    paging[2*512]=(uint64_t)((uint8_t*)&__paging+3*PAGESIZE)|0b11|(1<<10); //AF=1,Block=1,Present=1
+    paging[2*512]=(uint64_t)((uint8_t*)&__paging+3*PAGESIZE)|0b11|(3<<8)|(1<<10); //AF=1,Block=1,Present=1
     // identity L2 2M blocks
     mp>>=21;
     np=MMIO_BASE>>21;
     for(r=1;r<512;r++)
-        paging[2*512+r]=(uint64_t)(((uint64_t)r<<21))|0b01|(1<<10)|(r>=np?1<<2:0);
+        paging[2*512+r]=(uint64_t)(((uint64_t)r<<21))|0b01|(1<<10)|(r>=np?(2<<8)|(1<<2)|(1L<<54):(3<<8)); //device SH=2 OSH
     // identity L3
     for(r=0;r<512;r++)
-        paging[3*512+r]=(uint64_t)(r*PAGESIZE)|0b11|(1<<10);
+        paging[3*512+r]=(uint64_t)(r*PAGESIZE)|0b11|(1<<10)|(r<0x80||r>(uint32_t)((uint64_t)&_data/PAGESIZE)?0:(1<<7));
     // LLBR1, core L1
-    paging[512+511]=(uint64_t)((uint8_t*)&__paging+4*PAGESIZE)|0b11|(1<<10); //AF=1,Block=1,Present=1
+    paging[512+511]=(uint64_t)((uint8_t*)&__paging+4*PAGESIZE)|0b11|(3<<8)|(1<<10); //AF=1,Block=1,Present=1
     // core L2
     // map MMIO in kernel space
     for(r=0;r<16;r++)
-        paging[4*512+464+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b01|(1<<10)|(1<<2);
+        paging[4*512+464+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b01|(2<<8)|(1<<10)|(1<<2)|(1L<<54); //OSH, Attr=1, NX
     // map framebuffer
     for(r=0;r<16;r++)
-        paging[4*512+480+r]=(uint64_t)((uint8_t*)&__paging+(6+r)*PAGESIZE)|0b11|(1<<10);
-    paging[4*512+511]=(uint64_t)((uint8_t*)&__paging+5*PAGESIZE)|0b11|(1<<10);// pointer to core L3
+        paging[4*512+480+r]=(uint64_t)((uint8_t*)&__paging+(6+r)*PAGESIZE)|0b11|(2<<8)|(1<<10)|(2<<2)|(1L<<54); //OSH, Attr=2
+    paging[4*512+511]=(uint64_t)((uint8_t*)&__paging+5*PAGESIZE)|0b11|(3<<8)|(1<<10);// pointer to core L3
     // core L3
-    paging[5*512+0]=(uint64_t)((uint8_t*)&__bootboot)|0b11|(1<<10);  // p, b, AF
-    paging[5*512+1]=(uint64_t)((uint8_t*)&__environment)|0b11|(1<<10);
+    paging[5*512+0]=(uint64_t)((uint8_t*)&__bootboot)|0b11|(3<<8)|(1<<10)|(1L<<54);  // p, b, AF, ISH
+    paging[5*512+1]=(uint64_t)((uint8_t*)&__environment)|0b11|(3<<8)|(1<<10)|(1L<<54);
     for(r=0;r<(core.size/PAGESIZE);r++)
-        paging[5*512+2+r]=(uint64_t)((uint8_t *)core.ptr+(uint64_t)r*PAGESIZE)|0b11|(1<<10);
-    paging[5*512+511]=(uint64_t)((uint8_t*)&__corestack)|0b11|(1<<10); // core stack
+        paging[5*512+2+r]=(uint64_t)((uint8_t *)core.ptr+(uint64_t)r*PAGESIZE)|0b11|(3<<8)|(1<<10);
+    paging[5*512+511]=(uint64_t)((uint8_t*)&__corestack)|0b11|(3<<8)|(1<<10)|(1L<<54); // core stack
     // core L3 (lfb)
     for(r=0;r<16*512;r++)
-        paging[6*512+r]=(uint64_t)((uint8_t*)bootboot->fb_ptr+r*PAGESIZE)|0b11|(1<<10); //map framebuffer
+        paging[6*512+r]=(uint64_t)((uint8_t*)bootboot->fb_ptr+r*PAGESIZE)|0b11|(2<<8)|(1<<10)|(2<<2)|(1L<<54); //map framebuffer
 
 #if MEM_DEBUG
     /* dump page translation tables */
@@ -1342,6 +1355,8 @@ viderr:
     for(r=508;r<512;r++) { uart_hex(paging[2*512+r],8); uart_putc(' '); }
     uart_puts("\n L3 "); uart_hex((uint64_t)&paging[3*512],8); uart_puts("\n  ");
     for(r=0;r<4;r++) { uart_hex(paging[3*512+r],8); uart_putc(' '); }
+    uart_puts("...\n  ... ");
+    for(r=127;r<131;r++) { uart_hex(paging[3*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
     for(r=508;r<512;r++) { uart_hex(paging[3*512+r],8); uart_putc(' '); }
 
@@ -1364,28 +1379,28 @@ viderr:
     uart_puts("\n\n");
 #endif
     // enable paging
-    reg=(0xCC << 0) |    // normal, in/out write back, non-alloc
-        (0x04 << 8) |    // device, nGnRE
-        (0x00 <<16);     // coherent, nGnRnE
+    reg=(0xFF << 0) |    // Attr=0: normal, IWBWA, OWBWA, NTR
+        (0x04 << 8) |    // Attr=1: device, nGnRE (must be OSH too)
+        (0x44 <<16);     // Attr=2: non cacheable
     asm volatile ("msr mair_el1, %0" : : "r" (reg));
     reg=(0b00LL << 37) | // TBI=0, no tagging
         ((uint64_t)pa << 32) | // IPS=autodetected
         (0b10LL << 30) | // TG1=4k
         (0b11LL << 28) | // SH1=3 inner
-        (0b11LL << 26) | // ORGN1=3 write back
-        (0b11LL << 24) | // IRGN1=3 write back
+        (0b01LL << 26) | // ORGN1=1 write back
+        (0b01LL << 24) | // IRGN1=1 write back
         (0b0LL  << 23) | // EPD1 undocumented by ARM DEN0024A Fig 12-5, 12-6
         (25LL   << 16) | // T1SZ=25, 3 levels (512G)
         (0b00LL << 14) | // TG0=4k
         (0b11LL << 12) | // SH0=3 inner
-        (0b11LL << 10) | // ORGN0=3 write back
-        (0b11LL << 8) |  // IRGN0=3 write back
+        (0b01LL << 10) | // ORGN0=1 write back
+        (0b01LL << 8) |  // IRGN0=1 write back
         (0b0LL  << 7) |  // EPD0 undocumented by ARM DEN0024A Fig 12-5, 12-6
         (25LL   << 0);   // T0SZ=25, 3 levels (512G)
-    asm volatile ("msr ttbr0_el1, %0" : : "r" ((uint64_t)&__paging));
-    asm volatile ("msr ttbr1_el1, %0" : : "r" ((uint64_t)&__paging+PAGESIZE));
     asm volatile ("msr tcr_el1, %0; isb" : : "r" (reg));
-    asm volatile ("mrs %0, sctlr_el1" : "=r" (reg));
+    asm volatile ("msr ttbr0_el1, %0" : : "r" ((uint64_t)&__paging+1));
+    asm volatile ("msr ttbr1_el1, %0" : : "r" ((uint64_t)&__paging+1+PAGESIZE));
+    asm volatile ("dsb ish; isb; mrs %0, sctlr_el1" : "=r" (reg));
     // set mandatory reserved bits
     reg|=0xC00800;
     reg&=~( (1<<25) |   // clear EE, little endian translation tables
@@ -1396,7 +1411,7 @@ viderr:
             (1<<3) |    // clear SA
             (1<<2) |    // clear C, no cache at all
             (1<<1));    // clear A, no aligment check
-    reg|=(1<<0)|(1<<12)|(1<<2); // set M enable MMU, I instruction cache, C data cache
+    reg|=(1<<0)/*|(1<<19)|(1<<12)|(1<<2)*/; // set M enable MMU, WXN, I instruction cache, C data cache
     asm volatile ("msr sctlr_el1, %0; isb" : : "r" (reg));
 
     // jump to core's _start
