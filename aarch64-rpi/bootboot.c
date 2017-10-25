@@ -737,7 +737,7 @@ int GetLFB(uint32_t width, uint32_t height)
         mbox[3] = 8;
         mbox[4] = 8;
         mbox[5] = (uint32_t)(((uint64_t)bootboot->fb_ptr));
-        mbox[6] = (uint32_t)(((uint64_t)bootboot->fb_ptr)>>32);
+        mbox[6] = 0;
         mbox[7] = 0;
         mbox_call(MBOX_CH_PROP,mbox);
     }
@@ -751,41 +751,41 @@ int GetLFB(uint32_t width, uint32_t height)
     mbox[2] = 0x48003;  //set phy wh
     mbox[3] = 8;
     mbox[4] = 8;
-    mbox[5] = width;
-    mbox[6] = height;
+    mbox[5] = width;        //FrameBufferInfo.width
+    mbox[6] = height;       //FrameBufferInfo.height
 
     mbox[7] = 0x48004;  //set virt wh
     mbox[8] = 8;
     mbox[9] = 8;
-    mbox[10] = width;
-    mbox[11] = height;
+    mbox[10] = width;       //FrameBufferInfo.virtual_width
+    mbox[11] = height;      //FrameBufferInfo.virtual_height
     
     mbox[12] = 0x48009; //set virt offset
     mbox[13] = 8;
     mbox[14] = 8;
-    mbox[15] = 0;
-    mbox[16] = 0;
+    mbox[15] = 0;           //FrameBufferInfo.x_offset
+    mbox[16] = 0;           //FrameBufferInfo.y.offset
     
     mbox[17] = 0x48005; //set depth
     mbox[18] = 4;
     mbox[19] = 4;
-    mbox[20] = 32;      //only RGBA supported
+    mbox[20] = 32;          //FrameBufferInfo.depth
 
     mbox[21] = 0x48006; //set pixel order
     mbox[22] = 4;
     mbox[23] = 4;
-    mbox[24] = 0;       //RGB, not BGR
+    mbox[24] = 0;       //RGB, not BGR preferably
 
-    mbox[25] = 0x40001; //get framebuffer
-    mbox[26] = 8;       //response size
-    mbox[27] = 8;       //request size
-    mbox[28] = PAGESIZE;//buffer alignment
-    mbox[29] = 0;
-    
+    mbox[25] = 0x40001; //get framebuffer, gets alignment on request
+    mbox[26] = 8;
+    mbox[27] = 8;
+    mbox[28] = PAGESIZE;    //FrameBufferInfo.pointer
+    mbox[29] = 0;           //FrameBufferInfo.size
+
     mbox[30] = 0x40008; //get pitch
     mbox[31] = 4;
     mbox[32] = 4;
-    mbox[33] = 0;
+    mbox[33] = 0;           //FrameBufferInfo.pitch
 
     mbox[34] = 0;       //Arnold Schwarzenegger
 
