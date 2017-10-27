@@ -185,7 +185,7 @@ void uart_dump(void *ptr,uint32_t l) {
 void uart_exc(uint64_t idx, uint64_t esr, uint64_t elr, uint64_t spsr, uint64_t far, uint64_t sctlr, uint64_t tcr)
 {
     register uint64_t r;
-    asm volatile ("msr ttbr0_el1, %0" : : "r" ((uint64_t)&__paging+1));
+    asm volatile ("msr ttbr0_el1, %0;tlbi vmalle1" : : "r" ((uint64_t)&__paging+1));
     asm volatile ("dsb ish; isb; mrs %0, sctlr_el1" : "=r" (r));
     // set mandatory reserved bits
     r&=~((1<<12) |   // clear I, no instruction cache
@@ -208,7 +208,7 @@ void uart_exc(uint64_t idx, uint64_t esr, uint64_t elr, uint64_t spsr, uint64_t 
     uart_hex(tcr,8);
     uart_putc('\n');
     r=0; while(r!='\n' && r!=' ') r=uart_getc();
-    uart_puts("\n\n"); delaym(1000);
+    asm volatile("dsb sy; isb");
     *PM_WATCHDOG = PM_WDOG_MAGIC | 1;
     *PM_RTSC = PM_WDOG_MAGIC | PM_RTSC_FULLRST;
     while(1);
@@ -627,7 +627,7 @@ int sd_init()
 #include "fs.h"
 
 /*** other defines and structs ***/
-#define COREMMIO_BASE 0xFFFFFFFFFA000000
+#define COREMMIO_BASE 0xFFFFFFFFF8000000
 
 typedef struct {
     uint32_t type[4];
@@ -1321,10 +1321,10 @@ viderr:
     paging[512+511]=(uint64_t)((uint8_t*)&__paging+4*PAGESIZE)|0b11|(3<<8)|(1<<10); //AF=1,Block=1,Present=1
     // core L2
     // map MMIO in kernel space
-    for(r=0;r<16;r++)
-        paging[4*512+464+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b01|(2<<8)|(1<<10)|(1<<2)|(1L<<54); //OSH, Attr=1, NX
+    for(r=0;r<32;r++)
+        paging[4*512+448+r]=(uint64_t)(MMIO_BASE+((uint64_t)r<<21))|0b01|(2<<8)|(1<<10)|(1<<2)|(1L<<54); //OSH, Attr=1, NX
     // map framebuffer
-    for(r=0;r<16;r++)
+    for(r=0;r<28;r++)
         paging[4*512+480+r]=(uint64_t)((uint8_t*)&__paging+(6+r)*PAGESIZE)|0b11|(2<<8)|(1<<10)|(2<<2)|(1L<<54); //OSH, Attr=2
     paging[4*512+511]=(uint64_t)((uint8_t*)&__paging+5*PAGESIZE)|0b11|(3<<8)|(1<<10);// pointer to core L3
     // core L3
@@ -1367,7 +1367,7 @@ viderr:
     uart_puts("\n L2 ");
     uart_hex((uint64_t)&paging[4*512],8);
     uart_puts("\n  ... (skipped 464) ... ");
-    for(r=464;r<468;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
+    for(r=448;r<452;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
     for(r=480;r<484;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
@@ -1425,9 +1425,10 @@ viderr:
     // Wait until Enter or Space pressed, then reboot
 error:
     while(r!='\n' && r!=' ') r=uart_getc();
-    uart_puts("\n\n"); delaym(1000);
+    uart_puts("\n\n");
 
     // reset
+    asm volatile("dsb sy; isb");
     *PM_WATCHDOG = PM_WDOG_MAGIC | 1;
     *PM_RTSC = PM_WDOG_MAGIC | PM_RTSC_FULLRST;
     while(1);

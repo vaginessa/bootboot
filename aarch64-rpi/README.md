@@ -12,7 +12,7 @@ Machine state
 In addition to standard mappings, the MMIO is also mapped in kernel space:
 
 ```
-   -96M         MMIO      (0xFFFFFFFFFA000000)
+   -128M         MMIO      (0xFFFFFFFFF8000000)
 ```
 
 Code is running in supervisor mode, at EL1. Dummy exception handlers are installed, but your kernel should use it's own
