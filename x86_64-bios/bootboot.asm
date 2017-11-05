@@ -1469,21 +1469,54 @@ protmode_start:
             mov         edx, dword [core_ptr]
             add         edx, eax
             mov         cx, 248
-            ;  +---------------------+    free
-            ;  #######                    initrd (ebx..edx)
+            ; initrd+core (ebx..edx)
 .nextfree:  cmp         dword [esi], ebx
-            jne         .notini
-            ; ptr = initr_ptr+initrd_size+core_len
+            ja          .excludeok
+            mov         eax, dword [esi+8]
+            and         al, 0F0h
+            add         eax, dword [esi]
+            cmp         edx, eax
+            ja          .notini
+            ;         +--------------+
+            ;  #######
+            cmp         dword [esi], ebx
+            jne         .splitmem
+            ; ptr = initrd_ptr+initrd_size+core_len
             mov         dword [esi], edx
             sub         edx, ebx
             and         dl, 0F0h
             ; size -= initrd_size+core_len
             sub         dword [esi+8], edx
-            jmp         @f
+            jmp         .excludeok
+            ;  +--+       +----------+
+            ;      #######
+.splitmem:  mov         edi, bootboot.magic
+            add         edi, dword [bootboot.size]
+            add         dword [bootboot.size], 16
+@@:         mov         eax, dword [edi-16]
+            mov         dword [edi], eax
+            mov         eax, dword [edi-12]
+            mov         dword [edi+4], eax
+            mov         eax, dword [edi-8]
+            mov         dword [edi+8], eax
+            mov         eax, dword [edi-4]
+            mov         dword [edi+12], eax
+            sub         edi, 16
+            cmp         edi, esi
+            ja          @b
+            mov         eax, ebx
+            sub         eax, dword [esi]
+            sub         dword [esi+24], eax
+            inc         al
+            mov         dword [esi+8], eax
+            mov         dword [esi+16], edx
+            sub         edx, ebx
+            sub         dword [esi+24], edx
+            jmp         .excludeok
 .notini:    add         esi, 16
             dec         cx
             jnz         .nextfree
-@@:
+.excludeok:
             ; ------- set video resolution -------
             prot_realmode
 

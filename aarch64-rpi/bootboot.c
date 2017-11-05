@@ -10,6 +10,7 @@
 #define DEBUG 1
 //#define SD_DEBUG DEBUG
 //#define INITRD_DEBUG DEBUG
+//#define EXEC_DEBUG DEBUG
 //#define MEM_DEBUG DEBUG
 
 #define NULL ((void*)0)
@@ -1208,12 +1209,16 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
                 entrypoint = (int64_t)pehdr->entry_point;
         }
     }
+#if EXEC_DEBUG
+    uart_puts("Executable size ");
+    uart_hex((uint64_t)core.size,4);
+    uart_puts(" bss ");
+    uart_hex((uint64_t)bss,4);
+    uart_putc('\n');
+    uart_dump((void*)core.ptr,4);
+#endif
     if(core.size<2 || entrypoint==0) {
         puts("BOOTBOOT-PANIC: Kernel is not a valid executable\n");
-#if DEBUG
-        // dump executable
-        uart_dump((void*)core.ptr,8);
-#endif
         goto error;
     }
     // create core segment
@@ -1222,6 +1227,13 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
     if(bss>0)
         memset(core.ptr + core.size, 0, bss);
     core.size = (core.size+bss+PAGESIZE-1)&~(PAGESIZE-1);
+#if EXEC_DEBUG
+    uart_puts("Core ");
+    uart_hex((uint64_t)core.ptr,4);
+    uart_puts(" to ");
+    uart_hex((uint64_t)core.ptr+core.size,4);
+    uart_putc('\n');
+#endif
 
     /* generate memory map to bootboot struct */
     DBG(" * Memory Map\n");
@@ -1332,6 +1344,9 @@ viderr:
     paging[5*512+1]=(uint64_t)((uint8_t*)&__environment)|0b11|(3<<8)|(1<<10)|(1L<<54);
     for(r=0;r<(core.size/PAGESIZE);r++)
         paging[5*512+2+r]=(uint64_t)((uint8_t *)core.ptr+(uint64_t)r*PAGESIZE)|0b11|(3<<8)|(1<<10);
+#if MEM_DEBUG
+    reg=r;
+#endif
     paging[5*512+511]=(uint64_t)((uint8_t*)&__corestack)|0b11|(3<<8)|(1<<10)|(1L<<54); // core stack
     // core L3 (lfb)
     for(r=0;r<16*512;r++)
@@ -1367,13 +1382,15 @@ viderr:
     uart_puts("\n L2 ");
     uart_hex((uint64_t)&paging[4*512],8);
     uart_puts("\n  ... (skipped 464) ... ");
-    for(r=448;r<452;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
+    for(r=448;r<451;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
     for(r=480;r<484;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
     for(r=508;r<512;r++) { uart_hex(paging[4*512+r],8); uart_putc(' '); }
     uart_puts("\n L3 "); uart_hex((uint64_t)&paging[5*512],8); uart_puts("\n  ");
-    for(r=0;r<6;r++) { uart_hex(paging[5*512+r],8); uart_putc(' '); }
+    for(r=0;r<4;r++) { uart_hex(paging[5*512+r],8); uart_putc(' '); }
+    uart_puts("...\n  ... ");
+    for(r=reg;r<reg+4;r++) { uart_hex(paging[5*512+r],8); uart_putc(' '); }
     uart_puts("...\n  ... ");
     for(r=508;r<512;r++) { uart_hex(paging[5*512+r],8); uart_putc(' '); }
     uart_puts("\n\n");
