@@ -53,6 +53,17 @@ License
 The protocol as well as the reference implementations are Public Domain.
 You can do anything you want with them. You have no legal obligation to do anything else, although I appreciate attribution.
 
+Authors
+-------
+
+efirom: Michael Brown
+
+zlib: Mark Adler
+
+raspbootcom: (GPL) Goswin von Brederlow
+
+BOOTBOOT, FS/Z: bzt
+
 Glossary
 --------
 

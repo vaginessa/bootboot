@@ -11,6 +11,9 @@ all: boot.S bootboot.c fs.h
 mkboot: mkboot.c
 	gcc mkboot.c -o mkboot
 
+raspbootcom: raspbootcom.c
+	gcc raspbootcom.c -o raspbootcom
+
 getfw:
 	wget -q https://raw.githubusercontent.com/raspberrypi/firmware/master/boot/LICENCE.broadcom
 	wget -q https://raw.githubusercontent.com/raspberrypi/firmware/master/boot/bootcode.bin
@@ -21,4 +24,4 @@ cleanfw:
 	@rm LICENCE.broadcom bootcode.bin fixup.dat start.elf
 
 clean:
-	@rm *.o >/dev/null 2>/dev/null || true
+	@rm mkboot raspbootcom *.o >/dev/null 2>/dev/null || true

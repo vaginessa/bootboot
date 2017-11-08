@@ -13,7 +13,7 @@
 //#define EXEC_DEBUG DEBUG
 //#define MEM_DEBUG DEBUG
 
-#define CONSOLE UART0
+#define CONSOLE UART1
 
 #define NULL ((void*)0)
 #define PAGESIZE 4096
@@ -172,7 +172,7 @@ void delaym(uint32_t cnt) {uint64_t t,r;asm volatile ("mrs %0, cntpct_el0" : "=r
 /* UART stuff */
 void uart_send(uint32_t c) {
 #if CONSOLE == UART1
-    do{asm volatile("nop");}while(!(*AUX_MU_LSR&0x20)); *AUX_MU_IO=c;
+    do{asm volatile("nop");}while(!(*AUX_MU_LSR&0x20)); *AUX_MU_IO=c; *UART0_DR=c;
 #else
     do{asm volatile("nop");}while(*UART0_FR&0x20); *UART0_DR=c;
 #endif
@@ -933,6 +933,7 @@ int bootboot_main(uint64_t hcl)
 
     /* initialize UART */
     *UART0_CR = 0;         // turn off UART0
+    *AUX_ENABLE = 0;       // turn off UART1
 #if CONSOLE == UART1
     *AUX_ENABLE |=1;       // enable UART1, AUX mini uart
     *AUX_MU_IER = 0;
@@ -946,6 +947,11 @@ int bootboot_main(uint64_t hcl)
     r&=~((7<<12)|(7<<15)); // gpio14, gpio15
     r|=(2<<12)|(2<<15);    // alt5
     *GPFSEL1 = r;
+#else
+    r=*GPFSEL1;
+    r&=~((7<<12)|(7<<15)); // gpio14, gpio15
+    r|=(4<<12)|(4<<15);    // alt0
+    *GPFSEL1 = r;
 #endif
     *GPPUD = 0;            // enable pins 14 and 15
     delay(150);
@@ -956,10 +962,10 @@ int bootboot_main(uint64_t hcl)
     *AUX_MU_CNTL = 3;      // enable Tx, Rx
 #else
     *UART0_ICR = 0x7FF;    // clear interrupts
-    *UART0_IBRD = 1;       // 115200 baud
-    *UART0_FBRD = 40;
-    *UART0_LCRH = 0x70;    // 8n1
-    *UART0_IMSC = 0x7F2;   // mask interrupts
+    *UART0_IBRD = 2;       // 115200 baud
+    *UART0_FBRD = 0xB;
+    *UART0_LCRH = 0b11<<5; // 8n1
+//    *UART0_IMSC = 0x7F2;   // mask interrupts
     *UART0_CR = 0x301;     // enable Tx, Rx, FIFO
 #endif
 
@@ -985,9 +991,31 @@ int bootboot_main(uint64_t hcl)
         uart_putc('\n');
         goto error;
     }
-
     /* initialize microsec delay */
     asm volatile ("mrs %0, cntfrq_el0" : "=r" (cntfrq));
+
+    /* Raspbootin compatibility, see https://github.com/mrvn/raspbootin
+     * We can receive INITRD from raspbootcom */
+    uart_puts("\x03\x03\x03");
+    // wait reply with timeout
+    mp=10000;
+#if CONSOLE == UART1
+    r=(char)(*AUX_MU_IO);do{asm volatile("nop");}while(--mp>0 && !(*AUX_MU_LSR&0x01));
+#else
+    r=(char)(*UART0_DR);do{asm volatile("nop");}while(--mp>0 && *UART0_FR&0x10);
+#endif
+    if(mp>0) {
+        // we got response from raspbootcom
+        sp=uart_getc();
+        sp|=uart_getc()<<8; sp|=uart_getc()<<16; sp|=uart_getc()<<24;
+        if(sp>0 && sp<INITRD_MAXSIZE*1024*1024) {
+            uart_puts("OK");
+            initrd.size=sp;
+            initrd.ptr=pe=(uint8_t*)&_end;
+            while(sp--) *pe++ = uart_getc();
+            goto gotinitrd;
+        }
+    }
 
     /* initialize SDHC card reader in EMMC */
     if(sd_init()) {
@@ -1106,6 +1134,7 @@ diskerr:
         initrd.ptr=(uint8_t*)&_end;
         initrd.size=r;
     }
+gotinitrd:
     if(initrd.ptr==NULL || initrd.size==0) {
         puts("BOOTBOOT-PANIC: INITRD not found\n");
         goto error;
