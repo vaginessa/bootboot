@@ -13,6 +13,8 @@
 //#define EXEC_DEBUG DEBUG
 //#define MEM_DEBUG DEBUG
 
+#define CONSOLE UART0
+
 #define NULL ((void*)0)
 #define PAGESIZE 4096
 
@@ -135,6 +137,17 @@ typedef struct {
 #define GPPUDCLK0       ((volatile uint32_t*)(MMIO_BASE+0x00200098))
 #define GPPUDCLK1       ((volatile uint32_t*)(MMIO_BASE+0x0020009C))
 
+#define UART0           0
+#define UART0_DR        ((volatile uint32_t*)(MMIO_BASE+0x00201000))
+#define UART0_FR        ((volatile uint32_t*)(MMIO_BASE+0x00201018))
+#define UART0_IBRD      ((volatile uint32_t*)(MMIO_BASE+0x00201024))
+#define UART0_FBRD      ((volatile uint32_t*)(MMIO_BASE+0x00201028))
+#define UART0_LCRH      ((volatile uint32_t*)(MMIO_BASE+0x0020102C))
+#define UART0_CR        ((volatile uint32_t*)(MMIO_BASE+0x00201030))
+#define UART0_IMSC      ((volatile uint32_t*)(MMIO_BASE+0x00201038))
+#define UART0_ICR       ((volatile uint32_t*)(MMIO_BASE+0x00201044))
+
+#define UART1           1
 #define AUX_ENABLE      ((volatile uint32_t*)(MMIO_BASE+0x00215004))
 #define AUX_MU_IO       ((volatile uint32_t*)(MMIO_BASE+0x00215040))
 #define AUX_MU_IER      ((volatile uint32_t*)(MMIO_BASE+0x00215044))
@@ -147,9 +160,6 @@ typedef struct {
 #define AUX_MU_CNTL     ((volatile uint32_t*)(MMIO_BASE+0x00215060))
 #define AUX_MU_STAT     ((volatile uint32_t*)(MMIO_BASE+0x00215064))
 #define AUX_MU_BAUD     ((volatile uint32_t*)(MMIO_BASE+0x00215068))
-// qemu hack to see serial output
-#define UART0_DR        ((volatile uint32_t*)(MMIO_BASE+0x00201000))
-#define UART0_CR        ((volatile uint32_t*)(MMIO_BASE+0x00201030))
 
 /* timing stuff */
 uint64_t cntfrq;
@@ -160,8 +170,21 @@ void delaym(uint32_t cnt) {uint64_t t,r;asm volatile ("mrs %0, cntpct_el0" : "=r
     t+=((cntfrq/1000)*cnt)/1000;do{asm volatile ("mrs %0, cntpct_el0" : "=r" (r));}while(r<t);}
 
 /* UART stuff */
-void uart_send(uint32_t c) { do{asm volatile("nop");}while(!(*AUX_MU_LSR&0x20)); *AUX_MU_IO=c; *UART0_DR=c; }
-char uart_getc() {char r;do{asm volatile("nop");}while(!(*AUX_MU_LSR&0x01));r=(char)(*AUX_MU_IO);return r=='\r'?'\n':r;}
+void uart_send(uint32_t c) {
+#if CONSOLE == UART1
+    do{asm volatile("nop");}while(!(*AUX_MU_LSR&0x20)); *AUX_MU_IO=c;
+#else
+    do{asm volatile("nop");}while(*UART0_FR&0x20); *UART0_DR=c;
+#endif
+}
+char uart_getc() {char r;
+#if CONSOLE == UART1
+    do{asm volatile("nop");}while(!(*AUX_MU_LSR&0x01));r=(char)(*AUX_MU_IO);
+#else
+    do{asm volatile("nop");}while(*UART0_FR&0x10);r=(char)(*UART0_DR);
+#endif
+    return r=='\r'?'\n':r;
+}
 void uart_hex(uint64_t d,int c) { uint32_t n;c<<=3;c-=4;for(;c>=0;c-=4){n=(d>>c)&0xF;n+=n>9?0x37:0x30;uart_send(n);} }
 void uart_putc(char c) { if(c=='\n') uart_send((uint32_t)'\r'); uart_send((uint32_t)c); }
 void uart_puts(char *s) { while(*s) uart_putc(*s++); }
@@ -909,8 +932,9 @@ int bootboot_main(uint64_t hcl)
     MMapEnt *mmap;
 
     /* initialize UART */
-    *UART0_CR = 0;         // turn off UART0 or real hw. qemu doesn't care
-    *AUX_ENABLE |=1;       // enable UART1, mini uart
+    *UART0_CR = 0;         // turn off UART0
+#if CONSOLE == UART1
+    *AUX_ENABLE |=1;       // enable UART1, AUX mini uart
     *AUX_MU_IER = 0;
     *AUX_MU_CNTL = 0;
     *AUX_MU_LCR = 3;       // 8 bits
@@ -922,12 +946,22 @@ int bootboot_main(uint64_t hcl)
     r&=~((7<<12)|(7<<15)); // gpio14, gpio15
     r|=(2<<12)|(2<<15);    // alt5
     *GPFSEL1 = r;
-    *GPPUD = 0;
+#endif
+    *GPPUD = 0;            // enable pins 14 and 15
     delay(150);
     *GPPUDCLK0 = (1<<14)|(1<<15);
     delay(150);
     *GPPUDCLK0 = 0;        // flush GPIO setup
+#if CONSOLE == UART1
     *AUX_MU_CNTL = 3;      // enable Tx, Rx
+#else
+    *UART0_ICR = 0x7FF;    // clear interrupts
+    *UART0_IBRD = 1;       // 115200 baud
+    *UART0_FBRD = 40;
+    *UART0_LCRH = 0x70;    // 8n1
+    *UART0_IMSC = 0x7F2;   // mask interrupts
+    *UART0_CR = 0x301;     // enable Tx, Rx, FIFO
+#endif
 
     /* create bootboot structure */
     bootboot = (BOOTBOOT*)&__bootboot;
