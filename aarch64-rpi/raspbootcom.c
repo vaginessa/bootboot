@@ -1,6 +1,6 @@
 /* raspbootcom.c - upload INITRD via serial port to the RPi running BOOTBOOT */
 /* Copyright (C) 2013 Goswin von Brederlow <goswin-v-b@web.de>
- * minor modifications for BOOTBOOT: 2017 bzt
+ * minor modifications for BOOTBOOT: 2017 bzt (bztsrc@github)
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
