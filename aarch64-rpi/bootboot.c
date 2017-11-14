@@ -27,7 +27,7 @@
  * @brief Boot loader for the Raspberry Pi 3+ ARMv8
  *
  */
-#define DEBUG 0
+#define DEBUG 1
 //#define SD_DEBUG DEBUG
 //#define INITRD_DEBUG DEBUG
 //#define EXEC_DEBUG DEBUG
@@ -1323,7 +1323,7 @@ gzerr:      puts("BOOTBOOT-PANIC: Unable to uncompress\n");
     mmap=(MMapEnt *)&bootboot->mmap;
 
     // everything before the bootboot struct is free
-    mmap->ptr=0; mmap->size=(uint64_t)0x7F000/*&__bootboot*/ | MMAP_FREE;
+    mmap->ptr=0; mmap->size=(uint64_t)&__bootboot | MMAP_FREE;
     mmap++; bootboot->size+=sizeof(MMapEnt);
 
     // mark bss reserved 
