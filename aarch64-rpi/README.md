@@ -4,7 +4,8 @@ BOOTBOOT Raspberry Pi 3 Implementation
 See [BOOTBOOT Protocol](https://github.com/bztsrc/bootboot) for common details.
 
 On [Raspberry Pi 3](https://www.raspberrypi.org/documentation/hardware/raspberrypi/bootmodes/sdcard.md) board the bootboot.img
-is loaded from the boot partition on SD card as kernel8.img by start.elf.
+is loaded from the boot (or firmware) partition on SD card as kernel8.img by start.elf. For separating firmware and boot
+partitions see [documentation](https://github.com/bztsrc/bootboot/blob/master/bootboot_spec_1st_ed.pdf).
 
 Machine state
 -------------
@@ -22,7 +23,8 @@ File system drivers
 -------------------
 
 For boot partition, RPi3 version expects FAT16 or FAT32 file systems (if the
-initrd is a file and does not occupy the whole boot partition).
+initrd is a file and does not occupy the whole boot partition). The initrd can also be loaded over serial line,
+running [raspbootcom](https://github.com/bztsrc/bootboot/blob/master/aarch64-rpi/raspbootcom.c) on a remote machine.
 
 Gzip compression is not recommended as reading from SD card is considerably faster than uncompressing.
 
