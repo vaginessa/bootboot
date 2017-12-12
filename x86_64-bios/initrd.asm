@@ -26,7 +26,7 @@
 ;* This file is part of the BOOTBOOT Protocol package.
 ;* @brief Option ROM for initrd. mkfs utility also can do this.
 ;*
-;* This may seem odd, but works with BIOS (up to 128k gzipped
+;* This may seem odd, but works with BIOS (up to 96k gzipped
 ;* initrd), and makes much more sense on EFI, where Option ROMs
 ;* can be 16M in size.
 ;*
