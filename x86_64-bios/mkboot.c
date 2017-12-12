@@ -73,9 +73,10 @@ int main(int argc, char** argv)
         fprintf(stderr, "mkboot: unable to read file\n");
         return 2;
     }
-    // create the boot record. First copy the code then the data area from disk
+    // create the boot record. First copy the code then the data area from original sector on disk
     memcpy((void*)&bootrec, (void*)&_binary____boot_bin_start, 512);
-    memcpy((void*)&bootrec+0x1B8, (void*)&data+0x1B8, 510-0x1B8);
+    memcpy((void*)&bootrec+0xB, (void*)&data+0xB, 0x5A-0xB);        // copy BPB (if any)
+    memcpy((void*)&bootrec+0x1B8, (void*)&data+0x1B8, 510-0x1B8);   // copy WNTID and partitioning table (if any)
     // now locate the second stage by magic bytes
     for(lsn = 1; lsn < 1024*1024; lsn++) {
         printf("Checking sector %d\r", lsn);
@@ -88,7 +89,7 @@ int main(int argc, char** argv)
     close(f);
     // add bootboot.bin's address to boot record
     if(bootlsn == -1) {
-        fprintf(stderr, "mkboot: unable to locate 2nd stage in the first 512 Mbyte\n");
+        fprintf(stderr, "mkboot: unable to locate 2nd stage (bootboot.bin) in the first 512 Mbyte\n");
         return 2;
     }
     bootlsn += lba;
