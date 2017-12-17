@@ -1078,7 +1078,7 @@ diskerr:
             (part->type[0]==0x5A2F534F && (part->type[1]&0xFFFF)==0xAA64 && part->type[3]==0x746F6F72))
             break;
     }
-    if(part==NULL) goto diskerr;
+    if(part==NULL || r>=np) goto diskerr;
     r=sd_readblock(part->start,(unsigned char*)&_end,1);
     if(r==0) goto diskerr;
     initrd.ptr=NULL; initrd.size=0;
