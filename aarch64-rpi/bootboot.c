@@ -33,7 +33,7 @@
 //#define EXEC_DEBUG DEBUG
 //#define MEM_DEBUG DEBUG
 
-#define CONSOLE UART1
+#define CONSOLE UART0
 
 #define NULL ((void*)0)
 #define PAGESIZE 4096
@@ -786,9 +786,9 @@ int GetLFB(uint32_t width, uint32_t height)
         mbox_call(MBOX_CH_PROP,mbox);
     }
     //check minimum resolution
-    if(width<800 || height<600) {
-        width=800; height=600;
-    }
+    if(width<640) width=640;
+    if(height<480) height=480;
+
     mbox[0] = 35*4;
     mbox[1] = MBOX_REQUEST;
 
@@ -954,6 +954,18 @@ int bootboot_main(uint64_t hcl)
     /* initialize UART */
     *UART0_CR = 0;         // turn off UART0
     *AUX_ENABLE = 0;       // turn off UART1
+
+    /* set up clock for consistent divisor values */
+    mbox[0] = 8*4;
+    mbox[1] = MBOX_REQUEST;
+    mbox[2] = 0x38002;     // set clock rate
+    mbox[3] = 12;
+    mbox[4] = 8;
+    mbox[5] = 2;           // UART clock
+    mbox[6] = 4000000;     // 4Mhz
+    mbox[7] = 0;           // set turbo
+    mbox_call(MBOX_CH_PROP,mbox);
+
 #if CONSOLE == UART1
     *AUX_ENABLE |=1;       // enable UART1, AUX mini uart
     *AUX_MU_IER = 0;

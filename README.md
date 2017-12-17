@@ -384,6 +384,6 @@ BOOTBOOT-PANIC: VideoCore error, no framebuffer
 
 The first part of the message varies on different platforms. It means that the loader was unable to set up linear
 framebuffer with packed 32 bit pixels in the requested resolution. Possible solution is to modify screen to
-`screen=800x600` in environment, which is the minimal resolution supported.
+`screen=800x600` or `screen=1024x768` in environment.
 
 That's all, hope it will be useful!
