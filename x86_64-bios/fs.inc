@@ -41,6 +41,7 @@ end if
             dw          cpio_initrd
             dw          tar_initrd
             dw          sfs_initrd
+            dw          jamesm_initrd
             dw          0
 
 if FSZ_SUPPORT eq 1
@@ -444,3 +445,58 @@ sfs_initrd:
 .ks:        dd          0
 .bs:        dd          0
 .ver:       dd          0
+
+; ----------- JamesMolloy's ----------
+; Find the kernel on initrd
+; IN:   esi: initrd pointer, ecx: initrd end, edi: kernel filename
+; OUT:  On Success
+;         esi: pointer to the first byte, ecx: size in bytes
+;       On Error
+;         ecx: 0
+jamesm_initrd:
+            ; no real magic, so we assume initrd contains at least 2 files...
+            cmp         word [esi+2], 0
+            jne          .err
+            cmp         byte [esi+4], 0BFh
+            jne          .err
+            cmp         byte [esi+77], 0BFh
+            jne          .err
+            ; upper bound
+            xor         ecx, ecx
+            ; strlen(kernel)
+            mov         eax, edi
+            or          eax, eax
+            jz          .err
+            cmp         byte [eax], 0
+            jz          .err
+            xor         ecx, ecx
+@@:         inc         ecx
+            inc         eax
+            cmp         byte [eax], 0
+            jnz         @b
+            mov         dword [.ks], ecx
+            mov         ebx, esi
+            ; edx=*(int*)initrd_p
+            lodsd
+            mov         edx, eax
+            ; for(i=0;i<nf && ptr[0]==0xBF;i++)
+@@:         lodsb
+            cmp         al, 0BFh
+            jne         .err
+            push        esi                 ; name equals?
+            push        edi
+            mov         ecx, dword [.ks]
+            repz        cmpsb
+            pop         edi
+            pop         esi
+            jz          @f
+            add         esi, 72
+            dec         dx
+            jnz         @b
+.err:       xor         ecx, ecx
+            ret
+@@:         mov         ecx, dword [esi+68]
+            mov         esi, dword [esi+64]
+            add         esi, ebx
+            ret
+.ks:        dd          0

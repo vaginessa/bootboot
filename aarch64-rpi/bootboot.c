@@ -1412,7 +1412,7 @@ viderr:
 
     /* create MMU translation tables in __paging */
     paging=(uint64_t*)&__paging;
-    // LLBR0, identity L1
+    // TTBR0, identity L1
     paging[0]=(uint64_t)((uint8_t*)&__paging+2*PAGESIZE)|0b11|(3<<8)|(1<<10); //AF=1,Block=1,Present=1, SH=3 ISH, RO
     // identity L2
     paging[2*512]=(uint64_t)((uint8_t*)&__paging+3*PAGESIZE)|0b11|(3<<8)|(1<<10); //AF=1,Block=1,Present=1
@@ -1424,7 +1424,7 @@ viderr:
     // identity L3
     for(r=0;r<512;r++)
         paging[3*512+r]=(uint64_t)(r*PAGESIZE)|0b11|(1<<10)|(r<0x80||r>(uint32_t)((uint64_t)&_data/PAGESIZE)?0:(1<<7));
-    // LLBR1, core L1
+    // TTBR1, core L1
     paging[512+511]=(uint64_t)((uint8_t*)&__paging+4*PAGESIZE)|0b11|(3<<8)|(1<<10); //AF=1,Block=1,Present=1
     // core L2
     // map MMIO in kernel space

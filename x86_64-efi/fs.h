@@ -226,6 +226,30 @@ file_t sfs_initrd(unsigned char *initrd_p, char *kernel)
 }
 
 /**
+ * James Molloy's initrd (for some reason it's popular among hobby OS developers)
+ * http://www.jamesmolloy.co.uk/tutorial_html
+ */
+file_t jamesm_initrd(unsigned char *initrd_p, char *kernel)
+{
+    unsigned char *ptr=initrd_p+4;
+    int i,k,nf=*((int*)initrd_p);
+    file_t ret = { NULL, 0 };
+    // no real magic, so we assume initrd contains at least 2 files...
+    if(initrd_p==NULL || kernel==NULL || initrd_p[2]!=0 || initrd_p[3]!=0 || initrd_p[4]!=0xBF || initrd_p[77]!=0xBF)
+        return ret;
+    DBG(L" * JamesM %s\n",a2u(kernel));
+    k=strlena((unsigned char*)kernel);
+    for(i=0;i<nf && ptr[0]==0xBF;i++) {
+        if(!CompareMem(ptr+1,kernel,k+1)){
+            ret.ptr=*((uint32_t*)(ptr+65)) + initrd_p;
+            ret.size=*((uint32_t*)(ptr+69));
+        }
+        ptr+=73;
+    }
+    return ret;
+}
+
+/**
  * Static file system drivers registry
  */
 file_t (*fsdrivers[]) (unsigned char *, char *) = {
@@ -235,5 +259,6 @@ file_t (*fsdrivers[]) (unsigned char *, char *) = {
     cpio_initrd,
     tar_initrd,
     sfs_initrd,
+    jamesm_initrd,
     NULL
 };
