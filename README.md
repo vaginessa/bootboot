@@ -235,7 +235,8 @@ to be separated from the rest of the loader's source. This is so because it was 
 OS developers, specially for those who want to write their own file systems.
 
 The reference implementations support [cpio](https://en.wikipedia.org/wiki/Cpio) (all hpodc, newc and crc variants),
-[ustar](https://en.wikipedia.org/wiki/Tar_(computing)), osdev.org's SFS, James Molloy's initrd and [OS/Z](https://github.com/bztsrc/osz/)'s native [FS/Z](https://github.com/bztsrc/osz/blob/master/docs/fs.md).
+[ustar](https://en.wikipedia.org/wiki/Tar_(computing)), osdev.org's SFS, [James Molloy's initrd](http://www.jamesmolloy.co.uk/tutorial_html/8.-The%20VFS%20and%20the%20initrd.html)
+format and [OS/Z](https://github.com/bztsrc/osz/)'s native [FS/Z](https://github.com/bztsrc/osz/blob/master/docs/fs.md).
 Gzip compressed initrds also supported to save disk space and fasten up load time (not recommended on RPi3).
 
 Example kernel
