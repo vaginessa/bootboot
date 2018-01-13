@@ -944,7 +944,7 @@ void ParseEnvironment(uint8_t *env)
  */
 int bootboot_main(uint64_t hcl)
 {
-    uint8_t *pe;
+    uint8_t *pe,bkp=0;
     uint32_t np,sp,r,pa,mp;
     efipart_t *part;
     volatile bpb_t *bpb;
@@ -1064,24 +1064,51 @@ diskerr:
     }
     // get number of partitions and size of partition entry
     np=*((uint32_t*)((char*)&__diskbuf+80)); sp=*((uint32_t*)((char*)&__diskbuf+84));
+    if(np>127) np=127;
     // read GPT entries
     r=sd_readblock(*((uint32_t*)((char*)&__diskbuf+72)),(unsigned char*)&__diskbuf,(np*sp+511)/512);
     if(r==0) goto diskerr;
     part=NULL;
+    // first, look for a partition with bootable flag
     for(r=0;r<np;r++) {
         part = (efipart_t*)((char*)&__diskbuf+r*sp);
-            // ESP?
-        if((part->type[0]==0xC12A7328 && part->type[1]==0x11D2F81F) ||
-            // bootable?
-            part->flags&4 ||
-            // or OS/Z root partition for this architecture?
-            (part->type[0]==0x5A2F534F && (part->type[1]&0xFFFF)==0xAA64 && part->type[3]==0x746F6F72))
+        if((part->type[0]==0 && part->type[1]==0 && part->type[2]==0 && part->type[3]==0) || part->start==0) {
+            r=np;
             break;
+        }
+        // EFI_PART_USED_BY_OS?
+        if(part->flags&4) break;
+    }
+    // if none, look for specific partition types
+    if(part==NULL || r>=np) {
+        for(r=0;r<np;r++) {
+            part = (efipart_t*)((char*)&__diskbuf+r*sp);
+            if((part->type[0]==0 && part->type[1]==0 && part->type[2]==0 && part->type[3]==0) || part->start==0) {
+                r=np;
+                break;
+            }
+                // ESP?
+            if((part->type[0]==0xC12A7328 && part->type[1]==0x11D2F81F) ||
+                // or OS/Z root partition for this architecture?
+                (part->type[0]==0x5A2F534F && (part->type[1]&0xFFFF)==0xAA64 && part->type[3]==0x746F6F72))
+                break;
+        }
     }
     if(part==NULL || r>=np) goto diskerr;
     r=sd_readblock(part->start,(unsigned char*)&_end,1);
     if(r==0) goto diskerr;
     initrd.ptr=NULL; initrd.size=0;
+    // wait keypress with timeout
+    mp=50;
+#if CONSOLE == UART1
+    r=(char)(*AUX_MU_IO);do{delaym(5);}while(--mp>0 && !(*AUX_MU_LSR&0x01));
+#else
+    r=(char)(*UART0_DR);do{delaym(5);}while(--mp>0 && *UART0_FR&0x10);
+#endif
+    if(mp!=0) {
+        puts(" * Backup initrd\n");
+        bkp=1;
+    }
     //is it a FAT partition?
     bpb=(bpb_t*)&_end;
     if(!memcmp((void*)bpb->fst,"FAT16",5) || !memcmp((void*)bpb->fst2,"FAT32",5)) {
@@ -1129,7 +1156,7 @@ diskerr:
                 }
                 clu=0;
             } else
-            if(!memcmp(dir->name,"INITRD     ",11)) {
+            if(!memcmp(dir->name,bkp?"INITRD  BAK":"INITRD     ",11)) {
                 clu=dir->cl+(dir->ch<<16);
                 initrd.size=dir->size;
             }

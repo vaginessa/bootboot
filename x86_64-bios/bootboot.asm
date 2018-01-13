@@ -257,6 +257,10 @@ if DEBUG eq 1
 end if
             real_print  starting
 
+            in          al, 060h    ; read key
+            in          al, 061h    ; ack
+            out         061h, al
+
             DBG         dbg_cpu
 
             ;-----check CPU-----
@@ -363,6 +367,21 @@ end if
             jz          .a20wait2
             ret
 .a20ok:
+            ; wait for a key press, if so use backup initrd
+            mov         ecx, dword [046Ch]
+            add         ecx, 5  ; ~250ms, 18.2/4
+            sti
+.waitkey:   pause
+            in          al, 064h
+            and         al, 1
+            jz          @f
+            mov         eax, ' BAK'
+            mov         dword [bkp], eax
+            real_print  backup
+            jmp         .waitend
+@@:         cmp         dword [046Ch], ecx
+            jb          .waitkey
+.waitend:   cli
 
             ;-----detect memory map-----
 getmemmap:
@@ -846,19 +865,28 @@ protmode_start:
             mov         dword [gpt_ent], ebx
             mov         dword [gpt_num], ecx
             mov         dword [gpt_ptr], edx
-            ; look for EFI System Partition or bootable partition
+            ; first, look for a partition with bootable flag
+            mov         esi, edx
+@@:         cmp         dword [esi], 0          ;failsafe, jump to parttype search
+            jne         .notz
+            cmp         dword [esi+32], 0
+            jz          .nextgpt
+.notz:      bt          word [esi+48], 2        ;EFI_PART_USED_BY_OS?
+            jc          .loadesp2
+            add         esi, ebx
+            dec         ecx
+            jnz         @b
+            ; if none, look for specific partition types
 .nextgpt:   mov         esi, dword [gpt_ptr]
             mov         ebx, dword [gpt_ent]
-            add         dword [gpt_ptr], ebx
-            dec         dword [gpt_num]
-            jz          .nogpt
             mov         ecx, dword [gpt_num]
             mov         eax, 0C12A7328h
+            mov         edx, 011D2F81Fh
 @@:         cmp         dword [esi], eax        ;GUID match?
+            jne         .note
+            cmp         dword [esi+4], edx
             je          .loadesp
-            bt          word [esi+48], 2        ;or bootable?
-            jc          .loadesp
-            cmp         dword [esi], 'OS/Z'     ;or OS/Z root partition for this archicture?
+.note:      cmp         dword [esi], 'OS/Z'     ;or OS/Z root partition for this archicture?
             jne         .noto
             cmp         word [esi+4], 08664h
             jne         .noto
@@ -871,7 +899,9 @@ protmode_start:
             jz          prot_diefunc
 
             ; load ESP at free memory hole found
-.loadesp:   mov         ecx, dword [esi+40]     ;last sector
+.loadesp:   mov         dword [gpt_ptr], esi
+            mov         dword [gpt_num], ecx
+.loadesp2:  mov         ecx, dword [esi+40]     ;last sector
             mov         eax, dword [esi+32]     ;first sector
             mov         edx, dword [esi+36]
             or          edx, edx
@@ -1019,6 +1049,7 @@ protmode_start:
             ;look for CONFIG and INITRD
             mov         esi, edi
             mov         ecx, 255
+            mov         edx, dword [bkp]
 .nextdir:   cmp         dword [esi], 'CONF'
             jne         .notcfg
             cmp         dword [esi+4], 'IG  '
@@ -1026,6 +1057,7 @@ protmode_start:
             cmp         dword [esi+7], '    '
             jne         .notcfg
 
+            push        edx
             push        esi
             push        edi
             push        ecx
@@ -1076,6 +1108,7 @@ protmode_start:
 .cfgloaded: pop         ecx
             pop         edi
             pop         esi
+            pop         edx
             xor         eax, eax
             mov         ecx, 4096
             sub         ecx, dword [core_len]
@@ -1094,7 +1127,7 @@ protmode_start:
             jne         .notinit
             cmp         dword [esi+4], 'RD  '
             jne         .notinit
-            cmp         dword [esi+7], '    '
+            cmp         dword [esi+7], edx
             jne         .notinit
 
 .altinitrd: mov         ecx, dword [esi + fatdir.size]
@@ -1851,6 +1884,7 @@ reqheight:  dd          768
 bootdev:    db          0
 fattype:    db          0
 vbememsize: dw          0
+bkp:        dd          '    '
 if DEBUG eq 1
 dbg_cpu     db          " * Detecting CPU",10,13,0
 dbg_A20     db          " * Enabling A20",10,13,0
@@ -1865,6 +1899,7 @@ dbg_elf     db          " * Parsing ELF64",10,13,0
 dbg_pe      db          " * Parsing PE32+",10,13,0
 dbg_vesa    db          " * Screen VESA VBE",10,13,0
 end if
+backup:     db          " * Backup initrd",10,13,0
 starting:   db          "Booting OS...",10,13,0
 panic:      db          "-PANIC: ",0
 noarch:     db          "Hardware not supported",0

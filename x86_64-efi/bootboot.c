@@ -602,6 +602,7 @@ efi_main (EFI_HANDLE image, EFI_SYSTEM_TABLE *systab)
     EFI_MEMORY_DESCRIPTOR *memory_map = NULL, *mement;
     EFI_PARTITION_TABLE_HEADER *gptHdr;
     EFI_PARTITION_ENTRY *gptEnt;
+    EFI_INPUT_KEY key;
     UINTN i, j=0, handle_size=0,memory_map_size=0, map_key=0, desc_size=0;
     UINT32 desc_version=0;
     UINT64 lba_s=0,lba_e=0;
@@ -709,6 +710,17 @@ foundinrom:
     }
     // fall back to INITRD on filesystem
     if(EFI_ERROR(status) || initrd.ptr==NULL){
+        // if the user presses any key now, we fallback to backup initrd
+        for(i=0;i<50;i++) {
+            // delay 5ms
+            uefi_call_wrapper(BS->Stall, 1, 5000);
+            status=uefi_call_wrapper(ST->ConIn->ReadKeyStroke, 2, ST->ConIn, &key);
+            if(status!=EFI_NOT_READY) {
+                Print(L" * Backup initrd\n");
+                initrdfile=L"\\BOOTBOOT\\INITRD.BAK";
+                break;
+            }
+        }
         DBG(L" * Locate initrd in %s\n",initrdfile);
         // Initialize FS with the DeviceHandler from loaded image protocol
         status = uefi_call_wrapper(BS->HandleProtocol,
@@ -727,18 +739,7 @@ foundinrom:
     if(EFI_ERROR(status) || initrd.ptr==NULL){
         initrdfile=L"\\BOOTBOOT\\X86_64";
         DBG(L" * Locate initrd in %s\n",initrdfile);
-        // Initialize FS with the DeviceHandler from loaded image protocol
-        status = uefi_call_wrapper(BS->HandleProtocol,
-                    3,
-                    image,
-                    &lipGuid,
-                    (void **) &loaded_image);
-        if (!EFI_ERROR(status) && loaded_image!=NULL) {
-            status=EFI_LOAD_ERROR;
-            RootDir = LibOpenRoot(loaded_image->DeviceHandle);
-            // load ramdisk
-            status=LoadFile(initrdfile,&initrd.ptr, &initrd.size);
-        }
+        status=LoadFile(initrdfile,&initrd.ptr, &initrd.size);
     }
     // if even that failed, look for a partition
     if(status!=EFI_SUCCESS || initrd.size==0){
@@ -764,21 +765,31 @@ foundinrom:
             if(status!=EFI_SUCCESS || CompareMem(initrd.ptr,EFI_PTAB_HEADER_ID,8))
                 continue;
             gptHdr = (EFI_PARTITION_TABLE_HEADER*)initrd.ptr;
+            if(gptHdr->NumberOfPartitionEntries>127) gptHdr->NumberOfPartitionEntries=127;
+            // first, look for a partition with bootable flag
             ret.ptr= (UINT8*)(initrd.ptr + (gptHdr->PartitionEntryLBA-1) * bio->Media->BlockSize);
-            for(j=0;j<27 && j<gptHdr->NumberOfPartitionEntries;j++) {
+            for(j=0;j<gptHdr->NumberOfPartitionEntries;j++) {
                 gptEnt=(EFI_PARTITION_ENTRY*)ret.ptr;
-                if((ret.ptr[0]==0 && ret.ptr[1]==0 && ret.ptr[2]==0 && ret.ptr[3]==0) || gptEnt->EndingLBA==0)
+                if((ret.ptr[0]==0 && ret.ptr[1]==0 && ret.ptr[2]==0 && ret.ptr[3]==0) || gptEnt->StartingLBA==0)
                     break;
                 // use first partition with bootable flag as INITRD
-                if((gptEnt->Attributes & EFI_PART_USED_BY_OS) || 
-                    // or use the first OS/Z root partition for this architecture
-                    (!CompareMem(&gptEnt->PartitionTypeGUID.Data1,"OS/Z",4) &&
+                if((gptEnt->Attributes & EFI_PART_USED_BY_OS)) goto partfound;
+                ret.ptr+=gptHdr->SizeOfPartitionEntry;
+            }
+            // if none, look for specific partition types
+            ret.ptr= (UINT8*)(initrd.ptr + (gptHdr->PartitionEntryLBA-1) * bio->Media->BlockSize);
+            for(j=0;j<gptHdr->NumberOfPartitionEntries;j++) {
+                gptEnt=(EFI_PARTITION_ENTRY*)ret.ptr;
+                if((ret.ptr[0]==0 && ret.ptr[1]==0 && ret.ptr[2]==0 && ret.ptr[3]==0) || gptEnt->StartingLBA==0)
+                    break;
+                    // use the first OS/Z root partition for this architecture
+                if(!CompareMem(&gptEnt->PartitionTypeGUID.Data1,"OS/Z",4) &&
                     gptEnt->PartitionTypeGUID.Data2==0x8664 && 
-                    !CompareMem(&gptEnt->PartitionTypeGUID.Data4[4],"root",4))) {
-                    lba_s=gptEnt->StartingLBA; lba_e=gptEnt->EndingLBA;
-                    initrd.size = (((lba_e-lba_s)*bio->Media->BlockSize + PAGESIZE-1)/PAGESIZE)*PAGESIZE;
-                    status=EFI_SUCCESS;
-                    goto partok;
+                    !CompareMem(&gptEnt->PartitionTypeGUID.Data4[4],"root",4)) {
+partfound:              lba_s=gptEnt->StartingLBA; lba_e=gptEnt->EndingLBA;
+                        initrd.size = (((lba_e-lba_s)*bio->Media->BlockSize + PAGESIZE-1)/PAGESIZE)*PAGESIZE;
+                        status=EFI_SUCCESS;
+                        goto partok;
                 }
                 ret.ptr+=gptHdr->SizeOfPartitionEntry;
             }
