@@ -49,7 +49,19 @@ _start:
     ldr     x1, =_start
     // set up EL1
     mrs     x0, CurrentEL
-    cmp     x0, #4
+    and     x0, x0, #12
+    // running at EL3?
+    cmp     x0, #12
+    bne     1f
+    mov     x2, #0x5b1
+    msr     scr_el3, x2
+    mov     x2, #0x3c9
+    msr     spsr_el3, x2
+    adr     x2, 1f
+    msr     elr_el3, x2
+    eret
+    // running at EL2?
+1:  cmp     x0, #4
     beq     1f
     msr     sp_el1, x1
     // set up exception handlers
