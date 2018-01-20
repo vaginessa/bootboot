@@ -44,7 +44,7 @@ can be splitted up into several files and yet they will be loaded together
 as if it were a monolitic kernel. And you can use your own file system for the initrd.
 
 Note: BOOTBOOT is not a boot manager, it's a boot loader protocol. If you want an interactive boot menu, you should
-integrate it *before* a BOOTBOOT compatible loader is called. Like GRUB chainloading it (or loading bootboot.bin as a
+integrate that *before* a BOOTBOOT compatible loader is called. Like GRUB chainloading boot.bin (or loading bootboot.bin as a
 kernel) or adding bootboot.efi to UEFI Boot Manager's menu.
 
 Licence
@@ -130,16 +130,10 @@ Boot process
 7. maps linear framebuffer, environment and [bootboot structure](https://github.com/bztsrc/bootboot/blob/master/bootboot.h) accordingly.
 8. sets up stack, registers and jumps to kernel entry point. See [example kernel](https://github.com/bztsrc/bootboot/blob/master/mykernel).
 
-Protocol levels
----------------
-
-1. *PROTOCOL_STATIC*: kernel name parsed from environment, mapped at fixed address
-2. *PROTOCOL_DYNAMIC*: kernel name parsed, and memory mapped according to symbols in kernel
-
 Machine state
 -------------
 
-When the kernel gains control, the memory mapping looks like this (level 1 loaders):
+When the kernel gains control, the memory mapping looks like this:
 
 ```
    -64M         "fb" framebuffer      (0xFFFFFFFFFC000000)
@@ -150,26 +144,31 @@ When the kernel gains control, the memory mapping looks like this (level 1 loade
     0-16G       RAM identity mapped   (0x0000000400000000)
 ```
 
+All infomration is passed at linker defined addresses. No API required at all, therefore the BOOTBOOT protocol is
+totally architecture and ABI agnostic. Level 1 expects these symbols at pre-defined addresses, level 2 loaders
+parse the executable symbol table to get the actual addresses.
+
 The RAM (up to 16G) is identity mapped in the positive address range. Interrups are turned off and code is running
 in supervisor mode.
 
-The screen is properly set up with a 32 bit linear framebuffer, mapped at the negative address defined by the `fb` symbol
-(level 2 only). Level 1 loaders limit the framebuffer size somewhere around 4096 x 4096 pixels (depends on scanline size
-and aspect ratio too). That's more than enough for [Ultra HD 4K](https://en.wikipedia.org/wiki/4K_resolution) (3840 x 2160).
+The screen is properly set up with a 32 bit packed pixel linear framebuffer, mapped at the negative address defined by
+the `fb` symbol. Level 1 loaders limit the framebuffer size somewhere around 4096 x 4096 pixels (depends on scanline size
+and aspect ratio too). That's more than enough for [Ultra HD 4K](https://en.wikipedia.org/wiki/4K_resolution)
+(3840 x 2160). Level 2 loaders can place the fb anywhere in memory therefore they do not have such a limitation.
 
 The main information [bootboot structure](https://github.com/bztsrc/bootboot/blob/master/bootboot.h) is mapped
-at `bootboot` symbol (level 2 only). It consist of a fixed 128 bytes long header followed by various number of fixed
+at `bootboot` symbol. It consist of a fixed 128 bytes long header followed by various number of fixed
 records. Your initrd (with the additional kernel modules and servers) is enitrely in the memory, and you can locate it
 using this struct's *initrd_ptr* and *initrd_size* members. The physical address of the framebuffer can be found in
 the *fb_ptr* field. The *boot time* and a platform independent *memory map* are also provided.
 
-The configuration string (or command line if you like) is mapped at `environment` symbol (level 2 only).
+The configuration string (or command line if you like) is mapped at `environment` symbol.
 
 Kernel's code segment is mapped at ELF header's `p_vaddr` or PE header's `code_base` (level 2 only). Level 1 loaders
-limit the kernel's size in 2M, including configuration, data and stack. That should be more than enough for all
-micro-kernels.
+load kernels at -2M, therefore limiting the kernel's size in 2M, including configuration, data, bss and stack. That
+must be more than enough for all micro-kernels.
 
-The stack is at the top of the memory, starting at zero and growing downwards (all levels).
+The stack is at the top of the memory, starting at zero and growing downwards.
 
 Environment file
 ----------------
@@ -226,7 +225,8 @@ file_t myfs_initrd(uint8_t *initrd, char *filename);
 The protocol expects that a BOOTBOOT compliant loader iterates on a list of drivers until one
 returns a valid result. If all file system drivers returned {NULL,0}, the loader will brute-force
 scan for the first ELF64 / PE32+ image in the initrd. This feature is quite comfortable when you
-want to use your own file system but you don't have written an fs driver for it yet. You just copy
+want to use your own file system but you don't have written an fs driver for it yet, or when your
+"initrd" is a single, statically linked executable, like the Minix kernel. You just copy
 your initrd on the boot partition, and you're ready to rock and roll!
 
 The BOOTBOOT Protocol expects the file system drivers ([here](https://github.com/bztsrc/bootboot/blob/master/x86_64-efi/fs.h),
@@ -235,8 +235,9 @@ to be separated from the rest of the loader's source. This is so because it was 
 OS developers, specially for those who want to write their own file systems.
 
 The reference implementations support [cpio](https://en.wikipedia.org/wiki/Cpio) (all hpodc, newc and crc variants),
-[ustar](https://en.wikipedia.org/wiki/Tar_(computing)), osdev.org's SFS, [James Molloy's initrd](http://www.jamesmolloy.co.uk/tutorial_html/8.-The%20VFS%20and%20the%20initrd.html)
-format and [OS/Z](https://github.com/bztsrc/osz/)'s native [FS/Z](https://github.com/bztsrc/osz/blob/master/docs/fs.md).
+[ustar](https://en.wikipedia.org/wiki/Tar_(computing)), osdev.org's [SFS](http://wiki.osdev.org/SFS),
+[James Molloy's initrd](http://www.jamesmolloy.co.uk/tutorial_html/8.-The%20VFS%20and%20the%20initrd.html)
+format and OS/Z's native [FS/Z](https://github.com/bztsrc/osz/blob/master/etc/include/fsZ.h).
 Gzip compressed initrds also supported to save disk space and fasten up load time (not recommended on RPi3).
 
 Example kernel
