@@ -39,13 +39,13 @@ is loaded from the boot partition on SD card as kernel8.img by start.elf.
 
 The difference to other booting protocols is flexibility and portability;
 only clean 64 bit support; and that BOOTBOOT expects the kernel to fit inside the
-initial ramdisk. This is ideal for hobby OSes and microkernels. The advantage it gaves is that your kernel
+initial ramdisk. This is ideal for hobby OSes and micro-kernels. The advantage it gaves is that your kernel
 can be splitted up into several files and yet they will be loaded together
 as if it were a monolitic kernel. And you can use your own file system for the initrd.
 
 Note: BOOTBOOT is not a boot manager, it's a boot loader protocol. If you want an interactive boot menu, you should
 integrate that *before* a BOOTBOOT compatible loader is called. Like GRUB chainloading boot.bin (or loading bootboot.bin as a
-kernel) or adding bootboot.efi to UEFI Boot Manager's menu.
+kernel) or adding bootboot.efi to UEFI Boot Manager's menu for example.
 
 Licence
 -------
@@ -144,9 +144,9 @@ When the kernel gains control, the memory mapping looks like this:
     0-16G       RAM identity mapped   (0x0000000400000000)
 ```
 
-All infomration is passed at linker defined addresses. No API required at all, therefore the BOOTBOOT protocol is
+All infomration is passed at linker defined addresses. No API required at all, therefore the BOOTBOOT Protocol is
 totally architecture and ABI agnostic. Level 1 expects these symbols at pre-defined addresses, level 2 loaders
-parse the executable symbol table to get the actual addresses.
+parse the symbol table in executable to get the actual addresses.
 
 The RAM (up to 16G) is identity mapped in the positive address range. Interrups are turned off and code is running
 in supervisor mode.
